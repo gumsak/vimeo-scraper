@@ -1,25 +1,29 @@
 # Porjet scraper Vimeo
 
 # import libs
-import requests
 import scrapy
 
-# class to represent a video available online
-class Video:
-    #constructor
-    def __init__(self, name, url):
-        # name of the video
-        self.name = name
-        # URL of the video
-        self.url = url
+vimeoHome = 'https://vimeo.com/'
 
-    def setName(self):
-        
+# class to represent a video available online / this is the spider
+class Video(scrapy.Spider):
+    name = "vimeo_spider"
+    start_urls = ['https://vimeo.com/32876686']
+    #constructor
+   #def __init__(self, vidName, url):
+        # name of the video
+       # self.vidName = vidName
+        # URL of the video
+      #  self.url = url
+
+	#parse the video's url
+    def parse(self, response):
+        print(response.text)
 
 # create one object to retrieve a video
-vid1 = Video("et","at")
+#vidTest = Video("vid1","https://vimeo.com/32876686")
 
-print(vid1.url)
+#vidTest.parse
     
 # GET from the given address
 #response = requests.get("https://www.google.fr/")
@@ -34,7 +38,5 @@ print(vid1.url)
 #print(r.url)
 
 # Init the crawler
-
-
 
 #print(response.text)
