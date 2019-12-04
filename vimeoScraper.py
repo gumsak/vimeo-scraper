@@ -1,6 +1,7 @@
 #Video scraper for Vimeo (Get a public video)
 #Todo: handle private videos
 #Todo: add download progression status  
+#Todo: handle unwanted characters in URLs (Ex: '.mp4?source=1' --> '.mp4')
 
 # import libs
 from __future__ import print_function
@@ -52,19 +53,19 @@ def getVideoSpecs(response):
     
     data = re.findall("window.vimeo.clip_page_config =(.+?);\n", response.body.decode("utf-8"), re.S)
     dataJson = json.loads(data[0])
-    print(dataJson)
+    #print(dataJson)
 
     for key, val in dataJson.items():
     
         #get the video's title from the source code
         if key == "clip":
             videoTitle = val.get("title", "Title")
-            print(videoTitle)
+            #print(videoTitle)
         
         #get the video's data path from the source code    
         if key == "player":
             videoDataSource = val.get("config_url", "Problem With Url")
-            print(videoDataSource)
+            #print(videoDataSource)
 
 #retrieve the video from the sources
 def getVideoSource(response):
@@ -76,7 +77,12 @@ def getVideoSource(response):
             filesSource = val.get("files").get("progressive")
             
             videoUrl = getBestQualityVideo(filesSource)
-            downloadVideo(videoUrl, '.mp4')
+            
+            #some urls end with the '.mp4' extension but others will have 
+            #characters that have to be handled to get a proper mp4 file 
+            newUrl = videoUrl.replace('.mp4?source=1', '.mp4')
+            
+            downloadVideo(newUrl, '.mp4')
 
 #look through the videos to find the one with the best quality
 def getBestQualityVideo(videoList):

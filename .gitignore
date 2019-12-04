@@ -29,3 +29,4 @@
 *.html
 *.mp4
 config.py
+__pycache__/
