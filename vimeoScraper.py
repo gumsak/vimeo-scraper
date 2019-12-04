@@ -1,10 +1,13 @@
 #Video scraper for Vimeo (Get a public video)
+#Todo: handle private videos
+#Todo: add download progression status  
 
 # import libs
 from __future__ import print_function
 import sys
 import json
 import re
+import urllib.request
 
 #Scrapy use: 
 #https://docs.scrapy.org/en/latest/topics/dynamic-content.html
@@ -72,8 +75,10 @@ def getVideoSource(response):
         if key == "request":
             filesSource = val.get("files").get("progressive")
             
-            getBestQualityVideo(filesSource)
+            videoUrl = getBestQualityVideo(filesSource)
+            downloadVideo(videoUrl, '.mp4')
 
+#look through the videos to find the one with the best quality
 def getBestQualityVideo(videoList):
     
     bestQualityVideo = None
@@ -90,6 +95,10 @@ def getBestQualityVideo(videoList):
                     
     print(bestQualityVideo)
     return bestQualityVideo
+
+#download file from url
+def downloadVideo(url, extension):
+    urllib.request.urlretrieve(url, videoTitle + extension)
 
 #start crawling the website with the spider
 def startCrawling():
