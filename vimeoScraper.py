@@ -18,6 +18,7 @@ videoUrl = ''
 videoPassword = ''
 
 videoTitle = ''
+videoDataSource = ''
 
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
@@ -41,32 +42,54 @@ def getUserArgs():
         print("Input Error", file=sys.stderr)
         exit()
 
-#get the title of the video
+#get the data of the video
 def getVideoSpecs(response):
     global videoTitle
-
+    global videoDataSource
+    
     data = re.findall("window.vimeo.clip_page_config =(.+?);\n", response.body.decode("utf-8"), re.S)
     dataJson = json.loads(data[0])
     print(dataJson)
 
     for key, val in dataJson.items():
+    
+        #get the video's title from the source code
         if key == "clip":
-            print(val.get("title", "Title"))
-            
+            videoTitle = val.get("title", "Title")
+            print(videoTitle)
+        
+        #get the video's data path from the source code    
         if key == "player":
-            print(val.get("config_url", "Problem With Url"))
+            videoDataSource = val.get("config_url", "Problem With Url")
+            print(videoDataSource)
 
-#define the spider
-class VimeoSpider(scrapy.Spider):
-    getUserArgs()
-    name = 'vimeoSpider'
-    allowed_domains = [vimeoDomain]
-    start_urls=[videoUrl]
-    print("*** " + videoUrl + " ***")
+#retrieve the video from the sources
+def getVideoSource(response):
+    
+    data = json.loads(response.body_as_unicode())
+    
+    for key, val in data.items():
+        if key == "request":
+            filesSource = val.get("files").get("progressive")
+            
+            getBestQualityVideo(filesSource)
 
-    def parse(self, response):
-        #print(response.text)
-        getVideoSpecs(response)
+def getBestQualityVideo(videoList):
+    
+    bestQualityVideo = None
+    quality = 0
+    
+    for video in videoList:
+        for k, v in video.items():
+          
+            if k == "width":
+                if int(v) > quality:
+                    
+                    quality = int(v)
+                    bestQualityVideo = video.get("url")
+                    
+    print(bestQualityVideo)
+    return bestQualityVideo
 
 #start crawling the website with the spider
 def startCrawling():
@@ -78,4 +101,21 @@ def startCrawling():
     process.crawl(VimeoSpider)
     process.start() # the script will block here until the crawling is finished
 
+
+#define the spider
+class VimeoSpider(scrapy.Spider):
+    getUserArgs()
+    name = 'vimeoSpider'
+    allowed_domains = [vimeoDomain]
+    start_urls=[videoUrl]
+    print("*** " + videoUrl + " ***")
+
+    def parse(self, response):
+        getVideoSpecs(response)
+        
+        yield scrapy.Request(videoDataSource, callback = self.getVideo)
+        
+    def getVideo(self, response):
+        getVideoSource(response)
+        
 startCrawling()
