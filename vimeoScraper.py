@@ -78,11 +78,21 @@ def getVideoSource(response):
             
             videoUrl = getBestQualityVideo(filesSource)
             
-            #some urls end with the '.mp4' extension but others will have 
-            #characters that have to be handled to get a proper mp4 file 
-            newUrl = videoUrl.replace('.mp4?source=1', '.mp4')
+            #some urls end with the '.mp4' extension but others will end up 
+            #with characters that have to be removed to get a proper mp4 file 
+            fileUrl = formatVideoSource(videoUrl, '.mp4')
             
-            downloadVideo(newUrl, '.mp4')
+            downloadVideo(fileUrl, '.mp4')
+
+#remove end characters from the file's url
+def formatVideoSource(url, extension):
+    
+    #index of the last occurrence of this extension type in the url
+    index = url.rfind(extension)
+    cleanUrl = url[0:index+5]
+    
+    print(">>>>>> " + cleanUrl + " <<<<<<")
+    return cleanUrl
 
 #look through the videos to find the one with the best quality
 def getBestQualityVideo(videoList):
@@ -108,10 +118,10 @@ def downloadVideo(url, extension):
 
 #start crawling the website with the spider
 def startCrawling():
-    process = CrawlerProcess({
-        'FEED_FORMAT': 'XML',
-        'FEED_URI': 'output.html',
-        })
+    process = CrawlerProcess()#{
+        #'FEED_FORMAT': 'XML',
+        #'FEED_URI': 'output.html',
+       # }
 
     process.crawl(VimeoSpider)
     process.start() # the script will block here until the crawling is finished
@@ -120,6 +130,7 @@ def startCrawling():
 #define the spider
 class VimeoSpider(scrapy.Spider):
     getUserArgs()
+    
     name = 'vimeoSpider'
     allowed_domains = [vimeoDomain]
     start_urls=[videoUrl]

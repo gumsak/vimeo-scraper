@@ -30,3 +30,4 @@
 *.mp4
 config.py
 __pycache__/
+src/
