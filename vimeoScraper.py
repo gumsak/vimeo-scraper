@@ -1,7 +1,11 @@
 #Video scraper for Vimeo (Get a public video)
-#Todo: handle private videos
-#Todo: add download progression status  
-#Todo: handle unwanted characters in URLs (Ex: '.mp4?source=1' --> '.mp4')
+#Git repo : https://github.com/gumsak/vimeo-scraper
+'''
+Todo: handle private videos
+Todo: add download progression status
+Todo: handle specific 'errors': file with same name already exists, download is 
+interupted, etc
+'''
 
 # import libs
 from __future__ import print_function
@@ -18,6 +22,7 @@ from scrapy.crawler import CrawlerProcess
  
 vimeoHome = 'https://vimeo.com'
 vimeoDomain = 'vimeo.com'
+
 videoUrl = ''
 videoPassword = ''
 
@@ -100,16 +105,17 @@ def getBestQualityVideo(videoList):
     bestQualityVideo = None
     quality = 0
     
+    #look for the video with the biggest width resolution
     for video in videoList:
         for k, v in video.items():
-          
+            
             if k == "width":
                 if int(v) > quality:
                     
                     quality = int(v)
                     bestQualityVideo = video.get("url")
                     
-    print(bestQualityVideo)
+    #print(bestQualityVideo)
     return bestQualityVideo
 
 #download file from url
