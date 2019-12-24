@@ -32,10 +32,14 @@ videoDataSource = ''
 
 pathName = '../videos/'
 
-#url & password of the test videosS
-videoUrl = config.url_private_vid
-videoPassword = config.pass_private_vid
+#vimeo password field
+vimeoPassField = ''
 
+#url & password of the test videosS
+videoUrl = config.url_video_test
+
+videoPassword = config.pass_private_vid
+privateVideo = config.url_private_vid
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
 def getUserArgs():
@@ -57,6 +61,18 @@ def getUserArgs():
     else:
         print("Input Error", file=sys.stderr)
         exit()
+
+#get the page's source code
+def getPageSource(response):
+    print(response.text)
+
+#retrieve the token necessary to make the POST request 
+def getToken():
+    pass
+
+#make a POST request on a website with the chosen
+def makePostRequest():
+    pass
 
 #get the data of the video
 def getVideoSpecs(response):
@@ -171,7 +187,8 @@ def startCrawling():
         #'FEED_URI': 'output.html',
        # }
 
-    process.crawl(VimeoSpider)
+    #process.crawl(VimeoSpider)
+    process.crawl(PrivateVidSpider)
     process.start() # the script will block here until the crawling is finished
 
 
@@ -192,4 +209,15 @@ class VimeoSpider(scrapy.Spider):
     def getVideo(self, response):
         getVideoSource(response)
         
+class PrivateVidSpider(scrapy.Spider):
+    
+    name = 'privateSpider'
+    allowed_domains = [vimeoDomain]
+    start_urls=[privateVideo]
+    
+    def parse(self, response):
+        #getPageSource(response)
+        
+        yield print(str(response.request))
+    
 startCrawling()
