@@ -1,11 +1,14 @@
 #Video scraper for Vimeo (Get a public video)
 #Git repo : https://github.com/gumsak/vimeo-scraper
-'''
+"""
 Todo: handle private videos
 Todo: add download progression status
 Todo: handle specific 'errors': file with same name already exists, download is 
 interupted, etc
-'''
+Todo: add command line arguments
+Todo: use python's naming conventions
+Todo: implement video segments' download if we can't get the .mp4 file
+"""
 
 # import libs
 from __future__ import print_function
@@ -14,12 +17,13 @@ import json
 import re
 import urllib.request
 
+import scrapy
+from scrapy.crawler import CrawlerProcess
+
 #Scrapy use: 
 #https://docs.scrapy.org/en/latest/topics/dynamic-content.html
 #https://docs.scrapy.org/en/latest/topics/developer-tools.html
-import scrapy
-from scrapy.crawler import CrawlerProcess
- 
+
 vimeoHome = 'https://vimeo.com'
 vimeoDomain = 'vimeo.com'
 
@@ -28,6 +32,9 @@ videoPassword = ''
 
 videoTitle = ''
 videoDataSource = ''
+
+#path of the downloaded files
+downloadPath = '/videos'
 
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
