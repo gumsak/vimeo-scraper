@@ -29,6 +29,6 @@
 *.html
 *.mp4
 config.py
-src/
+#src/
 videos/
 __pycache__/
