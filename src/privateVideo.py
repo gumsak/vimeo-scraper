@@ -1,28 +1,25 @@
-#Video scraper for Vimeo (Get a public video)
-#Git repo : https://github.com/gumsak/vimeo-scraper
-"""
-Todo: handle private videos
-Todo: add download progression status
-Todo: handle specific 'errors': file with same name already exists, download is 
-interupted, etc
-Todo: add command line arguments
-Todo: use python's naming conventions
-Todo: implement video segments' download if we can't get the .mp4 file
-"""
+#Video scraper for Vimeo (Get a private video)
+#Todo: same as vimeoScraper.py if any  
 
 # import libs
 from __future__ import print_function
-import sys
+import sys, os
 import json
 import re
-import urllib.request
-
-import scrapy
-from scrapy.crawler import CrawlerProcess
+#import urllib.request
+import requests
+from tqdm import tqdm
 
 #Scrapy use: 
 #https://docs.scrapy.org/en/latest/topics/dynamic-content.html
 #https://docs.scrapy.org/en/latest/topics/developer-tools.html
+import scrapy
+from scrapy.crawler import CrawlerProcess
+
+#import the config file to use confidential data
+configPath = '..'
+sys.path.append(os.path.abspath(configPath))
+import config
 
 vimeoHome = 'https://vimeo.com'
 vimeoDomain = 'vimeo.com'
@@ -33,8 +30,11 @@ videoPassword = ''
 videoTitle = ''
 videoDataSource = ''
 
-#path of the downloaded files
-downloadPath = '/videos'
+pathName = '../videos/'
+
+#url & password of the test videosS
+videoUrl = config.url_private_vid
+videoPassword = config.pass_private_vid
 
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
@@ -126,9 +126,44 @@ def getBestQualityVideo(videoList):
     return bestQualityVideo
 
 #download file from url
+#progress bar implementation : https://stackoverflow.com/a/37573701
 def downloadVideo(url, extension):
-    urllib.request.urlretrieve(url, videoTitle + extension)
+    
+    fileName = pathName + videoTitle + extension
+    
+    #download the file
+    file = requests.get(url, stream = True)
+    
+    #get the size in bytes of the received body
+    fileSize = int(file.headers.get('content-length', 0))
+    blockSize = 1024
+    
+    #initialize the progress bar
+    t = tqdm(total = fileSize, unit = 'iB', unit_scale = True)
+    
+    #create the directory where the downloaded files will be saved 
+    try:
+        os.makedirs(os.path.dirname(pathName), exist_ok=False)
+    except FileExistsError:
+        pass
 
+    #save it
+    with open(fileName, 'wb') as f:
+        for data in file.iter_content(blockSize):
+            t.update(len(data))
+            #f.write(file.content)
+            f.write(data)
+            
+    t.close()
+    #urllib.request.urlretrieve(url, videoTitle + extension)
+
+'''
+def createVideoDirectory(pathName):
+    
+    os.makedirs(os.path.dirname(pathName), exist_ok=False)
+    with open(filename, "w") as f:
+        f.write("FOOBAR")
+'''
 #start crawling the website with the spider
 def startCrawling():
     process = CrawlerProcess()#{
@@ -142,7 +177,7 @@ def startCrawling():
 
 #define the spider
 class VimeoSpider(scrapy.Spider):
-    getUserArgs()
+    #getUserArgs()
     
     name = 'vimeoSpider'
     allowed_domains = [vimeoDomain]
