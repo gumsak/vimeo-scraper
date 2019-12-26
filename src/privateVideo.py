@@ -16,6 +16,9 @@ from tqdm import tqdm
 import scrapy
 from scrapy.crawler import CrawlerProcess
 
+import lxml.etree
+import lxml.html
+
 #import the config file to use confidential data
 configPath = '..'
 sys.path.append(os.path.abspath(configPath))
@@ -40,12 +43,17 @@ videoUrl = config.url_video_test
 
 videoPassword = config.pass_private_vid
 privateVideo = config.url_private_vid
+
+#current session's data
+sessionToken = ''
+sessionCookie = ''
+
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
 def getUserArgs():
     global videoUrl
     global videoPassword
-        
+    
     #user gave url & password
     if len(sys.argv) == 3:
         videoUrl = sys.argv[1]
@@ -64,14 +72,51 @@ def getUserArgs():
 
 #get the page's source code
 def getPageSource(response):
-    print(response.text)
+    page = lxml.html.fromstring(response.body)
+    #print(lxml.html.tostring(page, method='text', encoding='unicode'))
+    return page
 
-#retrieve the token necessary to make the POST request 
-def getToken():
-    pass
+#retrieve the token, cookie, etc, from the website; Needed to make a request
+def getSessionData(webPage):
+    global sessionToken
+    global sessionCookie
+    
+    #find the part of the code that has the needed data
+    data = re.findall('_extend\(window, (.+?)\);\n',
+                          webPage.body.decode("utf-8"),
+                          re.S)
+    
+    #convert the str from the source to JSON
+    dataJson = json.loads(data[0])
+    
+    #find the token and the 'vuid' in the json
+    for key, val in dataJson.items():
+        if key == 'ablincoln_config':
+            sessionCookie = val.get('user', 'user_problem').get('vuid', 'vuid_problem')
+            
+        if key == 'vimeo':
+            sessionToken = val.get('xsrft', 'token_problem')
+            
+    print(sessionToken)
+    print(sessionCookie)
 
 #make a POST request on a website with the chosen
 def makePostRequest():
+    pass
+
+#enter the video's password in the appropriate field (FormRequest)
+#https://doc.scrapy.org/en/latest/topics/request-response.html#using-formrequest-from-response-to-simulate-a-user-login
+def enterPassword(response, func):
+    
+    return scrapy.FormRequest.from_response(
+            response,
+            meta={'dont_redirect': True},
+            formid='pw_form',
+            formdata={'password': videoPassword},
+            callback=func)
+
+#define the actions to take if the password is wrong
+def handleWrongPassword():
     pass
 
 #get the data of the video
@@ -79,7 +124,14 @@ def getVideoSpecs(response):
     global videoTitle
     global videoDataSource
     
-    data = re.findall("window.vimeo.clip_page_config =(.+?);\n", response.body.decode("utf-8"), re.S)
+    data = re.findall("window.vimeo.clip_page_config =(.+?);\n", 
+                      response.body.decode("utf-8"), 
+                      re.S)
+        
+    if data == []:
+        exit('NO DATA FOUND')
+    
+    print(data)
     dataJson = json.loads(data[0])
     #print(dataJson)
 
@@ -173,16 +225,11 @@ def downloadVideo(url, extension):
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
-'''
-def createVideoDirectory(pathName):
-    
-    os.makedirs(os.path.dirname(pathName), exist_ok=False)
-    with open(filename, "w") as f:
-        f.write("FOOBAR")
-'''
 #start crawling the website with the spider
 def startCrawling():
-    process = CrawlerProcess()#{
+    process = CrawlerProcess(
+        {'USER_AGENT': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
+        })#{
         #'FEED_FORMAT': 'XML',
         #'FEED_URI': 'output.html',
        # }
@@ -211,13 +258,30 @@ class VimeoSpider(scrapy.Spider):
         
 class PrivateVidSpider(scrapy.Spider):
     
+    privateVideo = privateVideo + '/password'
+    
     name = 'privateSpider'
     allowed_domains = [vimeoDomain]
     start_urls=[privateVideo]
+        
+    handle_httpstatus_list = [401]
+    
+    #log level = ERROR, DEBUG, INFO, WARNING...
+    custom_settings = {
+        'HTTPERROR_ALLOWED_CODES': [401],
+        'LOG_LEVEL': 'ERROR'
+    }
     
     def parse(self, response):
-        #getPageSource(response)
+        getPageSource(response)
         
-        yield print(str(response.request))
-    
+        yield getSessionData(response)
+        
+    def getVideo(self, response):
+        getVideoSource(response)
+        
+    def printPage(self, response):
+        #print(response)
+        pass
+     
 startCrawling()
