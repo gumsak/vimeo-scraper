@@ -1,6 +1,7 @@
 #Video scraper for Vimeo (Get a private video)
 #TODO: same as vimeoScraper.py if any
 #TODO: set more solid regex search
+#TODO: implement whole albums/playlists download
 
 # import libs
 from __future__ import print_function
@@ -74,7 +75,6 @@ def getUserArgs():
 #get the page's source code
 def getPageSource(response):
     page = lxml.html.fromstring(response.body)
-    #print(lxml.html.tostring(page, method='text', encoding='unicode'))
     return page
 
 #retrieve the token, cookie, etc, from the website; Needed to make a request
@@ -100,43 +100,6 @@ def getSessionData(webPage):
             
     print(sessionToken)
     print(sessionCookie)
-
-#make a scrapy request on a website
-def makeRequest(url, method):
-    
-    print('Sending request to... {}'.format(url))
-    
-    #the body has the following form:
-    #password=[PASSWORD]&is_review=&is_file_transfer=&token=[TOKEN]
-    body = 'password={}&is_review=&is_file_transfer=&token={}'.format(
-        videoPassword, sessionToken)
-    print('BODY IS... {}'.format(body))
-    headers = {'Origin': 'https://vimeo.com',
-               'Referer':url,
-               'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
-               'Content-type':'application/x-www-form-urlencoded'}
-    
-    """   
-    'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-    'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3'
-    'Accept-Encoding': 'gzip, deflate, br'
-    'Content-Type': 'application/x-www-form-urlencoded'
-    'Content-Length': '113'
-    'Origin': 'https://vimeo.com'
-    'DNT': '1'
-    'Connection': 'keep-alive'
-    'Referer': 'https://vimeo.com/377031119/password'
-    'Cookie': 'vuid=1027323694.124992481'
-    'Upgrade-Insecure-Requests': '1'
-    """    
-    print(body)
-    print(headers)
-    
-    return scrapy.Request(url,
-                          method=method, 
-                          headers=headers,
-                          body=body)#,'Cookie':'vuid=' + sessionCookie
 
 #enter the video's password in the appropriate field (FormRequest)
 #https://doc.scrapy.org/en/latest/topics/request-response.html#using-formrequest-from-response-to-simulate-a-user-login
@@ -185,7 +148,7 @@ def getVideoSpecs(response):
 def getVideoSource(response):
     
     print('Initializing download...')
-    print(response.body_as_unicode())
+
     data = json.loads(response.body_as_unicode())
     
     for key, val in data.items():
@@ -261,19 +224,19 @@ def downloadVideo(url, extension):
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
-#start crawling the website with the spider
-def startCrawling():
-    process = CrawlerProcess(
-        {'USER_AGENT': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
-        })#{
-        #'FEED_FORMAT': 'XML',
-        #'FEED_URI': 'output.html',
-       # }
+#check whether the user is trying to download a public or a private video
+def checkPublicOrPrivateVideo():
+    pass
 
-    #process.crawl(VimeoSpider)
+#start crawling the website with the spider
+#TODO: set dynamic user-agent
+def startCrawling():
+    process = CrawlerProcess({
+        'USER_AGENT': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
+        })
+    
     process.crawl(PrivateVidSpider)
     process.start() # the script will block here until the crawling is finished
-
 
 #define the spider
 class VimeoSpider(scrapy.Spider):
@@ -291,7 +254,8 @@ class VimeoSpider(scrapy.Spider):
         
     def getVideo(self, response):
         getVideoSource(response)
-        
+
+
 class PrivateVidSpider(scrapy.Spider):
     global privateVideo
     
@@ -303,41 +267,45 @@ class PrivateVidSpider(scrapy.Spider):
         
     handle_httpstatus_list = [401]
     
-    #'LOG_LEVEL': 'ERROR'
     #log level = ERROR, DEBUG, INFO, WARNING...
     custom_settings = {
-        'HTTPERROR_ALLOWED_CODES': [401]
+        'HTTPERROR_ALLOWED_CODES': [401],
+        'LOG_LEVEL': 'ERROR'
     }
     
     def parse(self, response):
+        
+        #get the web page's source code
         getPageSource(response)
         
+        #get the session related data from the source code
         getSessionData(response)
-        '''
-        makeRequest(privateVideo, 'POST')
-        '''
+        
+        #form data to check video access password in Vimeo
         body = 'password={}&is_review=&is_file_transfer=&token={}'.format(
         videoPassword, sessionToken)
+        
+        #header of a request used to access a password protected video
         headers = {'Origin': 'https://vimeo.com',
                'Referer':privateVideo,
                'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
                'Content-type':'application/x-www-form-urlencoded'}
-    
+        
+        #make a 'POST' request with the video's credentials
         yield scrapy.Request(privateVideo,
                           method='POST', 
                           headers=headers,
                           body=body,
                           callback= self.getVideo)#,'Cookie':'vuid=' + sessionCookie
-        
-    def sendRequest(self, response):
-        yield makeRequest(privateVideo, 'POST')
-        #print(response.body)
-        
+           
+    #look for the video's data
     def getVideo(self, response):
-        getVideoSpecs(response)
+        getVideoSpecs(response)   
+        yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
+
+    #download the video
+    def downloadVideo(self, response):
         getVideoSource(response)
         
-    def printPage(self, response):
-        print(response.body)
-        
+#launch the crawler/start the program
 startCrawling()
