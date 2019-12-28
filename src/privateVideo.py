@@ -17,6 +17,8 @@ from tqdm import tqdm
 #https://docs.scrapy.org/en/latest/topics/developer-tools.html
 import scrapy
 from scrapy.crawler import CrawlerProcess
+from scrapy.utils.log import configure_logging
+import logging
 
 import lxml.etree
 import lxml.html
@@ -71,6 +73,18 @@ def getUserArgs():
     else:
         print("Input Error", file=sys.stderr)
         exit()
+
+#print the logging informations in a file
+def setLogOutput():
+    
+    configure_logging(install_root_handler=False)
+
+    logging.basicConfig(
+        filename='logs.log',
+        format='%(levelname)s: %(message)s',
+        level=logging.INFO
+        )
+
 
 #get the page's source code
 def getPageSource(response):
@@ -229,7 +243,8 @@ def checkPublicOrPrivateVideo():
     pass
 
 #start crawling the website with the spider
-#TODO: set dynamic user-agent
+#TODO: set dynamic user-agent:
+#--> list of agents: https://developers.whatismybrowser.com/useragents/explore
 def startCrawling():
     process = CrawlerProcess({
         'USER_AGENT': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
@@ -264,9 +279,9 @@ class PrivateVidSpider(scrapy.Spider):
     name = 'privateSpider'
     allowed_domains = [vimeoDomain]
     start_urls=[privateVideo]
-        
-    handle_httpstatus_list = [401]
     
+    handle_httpstatus_list = [401]
+        
     #log level = ERROR, DEBUG, INFO, WARNING...
     custom_settings = {
         'HTTPERROR_ALLOWED_CODES': [401],
@@ -274,10 +289,10 @@ class PrivateVidSpider(scrapy.Spider):
     }
     
     def parse(self, response):
-        
+                
         #get the web page's source code
         getPageSource(response)
-        
+
         #get the session related data from the source code
         getSessionData(response)
         
@@ -290,7 +305,7 @@ class PrivateVidSpider(scrapy.Spider):
                'Referer':privateVideo,
                'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
                'Content-type':'application/x-www-form-urlencoded'}
-        
+            
         #make a 'POST' request with the video's credentials
         yield scrapy.Request(privateVideo,
                           method='POST', 
