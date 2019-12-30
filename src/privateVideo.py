@@ -1,14 +1,19 @@
-#Video scraper for Vimeo (Get a private video)
-#TODO: same as vimeoScraper.py if any
-#TODO: set more solid regex search
-#TODO: implement whole albums/playlists download
-
-# import libs
+#Video scraper for Vimeo (Get a public or private video)
+#Git repo : https://github.com/gumsak/vimeo-scraper
+"""
+TODO: handle specific 'errors': file with same name already exists, download is 
+interupted, etc
+TODO: use python's naming conventions
+TODO: implement video segments' download if we can't get the .mp4 file
+TODO: set more solid regex search
+TODO: implement whole albums/playlists download
+TODO: check url validity, handle response status code, missing password, etc
+"""
+#import libs
 from __future__ import print_function
 import sys, os
 import json
 import re
-#import urllib.request
 import requests
 from tqdm import tqdm
 
@@ -26,7 +31,6 @@ import lxml.html
 #import the config file to use confidential data
 configPath = '..'
 sys.path.append(os.path.abspath(configPath))
-import config
 
 vimeoHome = 'https://vimeo.com'
 vimeoDomain = 'vimeo.com'
@@ -39,14 +43,7 @@ videoDataSource = ''
 
 pathName = '../videos/'
 
-#vimeo password field
-vimeoPassField = ''
-
-#url & password of the test videosS
-videoUrl = config.url_video_test
-
-videoPassword = config.pass_private_vid
-privateVideo = config.url_private_vid
+videoIsPublic = True
 
 #current session's data
 sessionToken = ''
@@ -57,11 +54,13 @@ sessionCookie = ''
 def getUserArgs():
     global videoUrl
     global videoPassword
+    global videoIsPublic
     
     #user gave url & password
     if len(sys.argv) == 3:
-        videoUrl = sys.argv[1]
+        videoUrl = sys.argv[1] + '/password'
         videoPassword = sys.argv[2]
+        videoIsPublic = False
         print(sys.argv[1])
         
     #user gave url only
@@ -70,6 +69,7 @@ def getUserArgs():
         print(videoUrl)
         
     #user gave wrong/no arguments
+        #TODO: display help/correct parameters
     else:
         print("Input Error", file=sys.stderr)
         exit()
@@ -232,35 +232,43 @@ def downloadVideo(url, extension):
     with open(fileName, 'wb') as f:
         for data in file.iter_content(blockSize):
             t.update(len(data))
-            #f.write(file.content)
             f.write(data)
             
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
-#check whether the user is trying to download a public or a private video
+#check whether the user is trying to download a public or a private video to
+#select the correct spider
 def checkPublicOrPrivateVideo():
-    pass
+    
+    if videoIsPublic:
+        return PublicVideoSpider()
+    else:
+        return PrivateVideoSpider()
 
 #start crawling the website with the spider
 #TODO: set dynamic user-agent:
 #--> list of agents: https://developers.whatismybrowser.com/useragents/explore
 def startCrawling():
+    
+    currentSpider = checkPublicOrPrivateVideo()
+    
     process = CrawlerProcess({
         'USER_AGENT': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
         })
-    
-    process.crawl(PrivateVidSpider)
+
+    process.crawl(currentSpider)
     process.start() # the script will block here until the crawling is finished
 
-#define the spider
-class VimeoSpider(scrapy.Spider):
-    #getUserArgs()
+#spider used to parse a public video
+class PublicVideoSpider(scrapy.Spider):
     
-    name = 'vimeoSpider'
-    allowed_domains = [vimeoDomain]
-    start_urls=[videoUrl]
-    print("*** " + videoUrl + " ***")
+    def __init__(self):
+    
+        self.name = 'publicVimeoSpider'
+        self.allowed_domains = [vimeoDomain]
+        self.start_urls=[videoUrl]
+        print("*** Public video: URL = " + videoUrl + " ***")
 
     def parse(self, response):
         getVideoSpecs(response)
@@ -270,23 +278,25 @@ class VimeoSpider(scrapy.Spider):
     def getVideo(self, response):
         getVideoSource(response)
 
-
-class PrivateVidSpider(scrapy.Spider):
-    global privateVideo
+#spider used to parse a private video
+class PrivateVideoSpider(scrapy.Spider):
     
-    privateVideo = privateVideo + '/password'
-    
-    name = 'privateSpider'
-    allowed_domains = [vimeoDomain]
-    start_urls=[privateVideo]
-    
-    handle_httpstatus_list = [401]
+    def __init__(self):
+        #getUserArgs()
         
-    #log level = ERROR, DEBUG, INFO, WARNING...
-    custom_settings = {
-        'HTTPERROR_ALLOWED_CODES': [401],
-        'LOG_LEVEL': 'ERROR'
-    }
+        self.name = 'privateVimeoSpider'
+        self.allowed_domains = [vimeoDomain]
+        self.start_urls=[videoUrl]
+    
+        print("*** Private video: URL = " + videoUrl + " ***")
+
+        self.handle_httpstatus_list = [401]
+        
+        #log level = ERROR, DEBUG, INFO, WARNING...
+        self.custom_settings = {
+            'HTTPERROR_ALLOWED_CODES': [401],
+            'LOG_LEVEL': 'ERROR'
+            }
     
     def parse(self, response):
                 
@@ -302,12 +312,12 @@ class PrivateVidSpider(scrapy.Spider):
         
         #header of a request used to access a password protected video
         headers = {'Origin': 'https://vimeo.com',
-               'Referer':privateVideo,
+               'Referer':videoUrl,
                'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
                'Content-type':'application/x-www-form-urlencoded'}
             
         #make a 'POST' request with the video's credentials
-        yield scrapy.Request(privateVideo,
+        yield scrapy.Request(videoUrl,
                           method='POST', 
                           headers=headers,
                           body=body,
@@ -322,5 +332,8 @@ class PrivateVidSpider(scrapy.Spider):
     def downloadVideo(self, response):
         getVideoSource(response)
         
-#launch the crawler/start the program
+#retrieve the url/password to use       
+getUserArgs()
+
+#launch the crawler/start the process
 startCrawling()
