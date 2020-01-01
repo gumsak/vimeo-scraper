@@ -44,6 +44,7 @@ videoDataSource = ''
 pathName = '../videos/'
 
 videoIsPublic = True
+isPlaylist = False
 
 #current session's data
 sessionToken = ''
@@ -58,7 +59,7 @@ def getUserArgs():
     
     #user gave url & password
     if len(sys.argv) == 3:
-        videoUrl = sys.argv[1] + '/password'
+        videoUrl = sys.argv[1]
         videoPassword = sys.argv[2]
         videoIsPublic = False
         print(sys.argv[1])
@@ -85,10 +86,10 @@ def setLogOutput():
         level=logging.INFO
         )
 
-
 #get the page's source code
 def getPageSource(response):
     page = lxml.html.fromstring(response.body)
+    #print(response.body)
     return page
 
 #retrieve the token, cookie, etc, from the website; Needed to make a request
@@ -237,6 +238,12 @@ def downloadVideo(url, extension):
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
+#download all the videos from a playlist/album/showcase
+def downloadPlaylist():
+    
+    
+    pass
+
 #check whether the user is trying to download a public or a private video to
 #select the correct spider
 def checkPublicOrPrivateVideo():
@@ -246,11 +253,34 @@ def checkPublicOrPrivateVideo():
     else:
         return PrivateVideoSpider()
 
+#check if the user provided a link to a playlist
+def checkIfPlaylist(url):
+        
+     if re.search(vimeoDomain + r'\/showcase\/[0-9]', url) == None:
+         return False
+     return True
+
+#retrieve the IDs of the videos in the playlist
+def getPlaylistVideos(response):
+    
+    data = re.findall("unlisted_hash_map\":(.+?)};\n", 
+                      response.body.decode("utf-8"), 
+                      re.S)
+    
+    #dataJson = json.loads(data[0])
+    
+    print(data)
+
 #start crawling the website with the spider
 #TODO: set dynamic user-agent:
 #--> list of agents: https://developers.whatismybrowser.com/useragents/explore
 def startCrawling():
     
+    global isPlaylist
+    
+    print('This is a playlist:', checkIfPlaylist(videoUrl))
+    isPlaylist = checkIfPlaylist(videoUrl)
+
     currentSpider = checkPublicOrPrivateVideo()
     
     process = CrawlerProcess({
@@ -259,7 +289,7 @@ def startCrawling():
 
     process.crawl(currentSpider)
     process.start() # the script will block here until the crawling is finished
-
+    
 #spider used to parse a public video
 class PublicVideoSpider(scrapy.Spider):
     
@@ -282,11 +312,16 @@ class PublicVideoSpider(scrapy.Spider):
 class PrivateVideoSpider(scrapy.Spider):
     
     def __init__(self):
-        #getUserArgs()
+        
+        if isPlaylist:
+            privateVidUrl = videoUrl
+            self.download_delay = 2 # 2 sec delay between requests
+        else:
+            privateVidUrl = videoUrl + '/password'
         
         self.name = 'privateVimeoSpider'
         self.allowed_domains = [vimeoDomain]
-        self.start_urls=[videoUrl]
+        self.start_urls=[privateVidUrl]
     
         print("*** Private video: URL = " + videoUrl + " ***")
 
@@ -299,10 +334,10 @@ class PrivateVideoSpider(scrapy.Spider):
             }
     
     def parse(self, response):
-                
+        
         #get the web page's source code
         getPageSource(response)
-
+        
         #get the session related data from the source code
         getSessionData(response)
         
@@ -312,12 +347,12 @@ class PrivateVideoSpider(scrapy.Spider):
         
         #header of a request used to access a password protected video
         headers = {'Origin': 'https://vimeo.com',
-               'Referer':videoUrl,
+               'Referer':self.start_urls[0],
                'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
                'Content-type':'application/x-www-form-urlencoded'}
             
         #make a 'POST' request with the video's credentials
-        yield scrapy.Request(videoUrl,
+        yield scrapy.Request(self.start_urls[0],
                           method='POST', 
                           headers=headers,
                           body=body,
@@ -325,8 +360,10 @@ class PrivateVideoSpider(scrapy.Spider):
            
     #look for the video's data
     def getVideo(self, response):
-        getVideoSpecs(response)   
-        yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
+        #print(response.body)
+        getPlaylistVideos(response)
+        #getVideoSpecs(response)   
+        #yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
 
     #download the video
     def downloadVideo(self, response):
