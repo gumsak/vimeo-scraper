@@ -8,6 +8,7 @@ TODO: implement video segments' download if we can't get the .mp4 file
 TODO: set more solid regex search
 TODO: implement whole albums/playlists download
 TODO: check url validity, handle response status code, missing password, etc
+TODO: GIT - merge this branch with master
 """
 #import libs
 from __future__ import print_function
@@ -49,6 +50,9 @@ isPlaylist = False
 #current session's data
 sessionToken = ''
 sessionCookie = ''
+
+#used to store the IDs corresponding of all the videos from a playlist
+playlistIds = []
 
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
@@ -255,21 +259,28 @@ def checkPublicOrPrivateVideo():
 
 #check if the user provided a link to a playlist
 def checkIfPlaylist(url):
-        
-     if re.search(vimeoDomain + r'\/showcase\/[0-9]', url) == None:
-         return False
-     return True
+    
+    if re.search(vimeoDomain + r'\/showcase\/[0-9]', url) == None:
+        return False
+    return True
 
 #retrieve the IDs of the videos in the playlist
 def getPlaylistVideos(response):
     
-    data = re.findall("unlisted_hash_map\":(.+?)};\n", 
+    global playlistIds
+    
+    #regex to find the IDs in the source code of the page
+    data = re.findall("unlisted_hash_map\":(.+?})", 
                       response.body.decode("utf-8"), 
                       re.S)
     
-    #dataJson = json.loads(data[0])
+    dataJson = json.loads(data[0])
     
-    print(data)
+    for key, val in dataJson.items():
+    
+        playlistIds.append(key)
+        
+    print(playlistIds)
 
 #start crawling the website with the spider
 #TODO: set dynamic user-agent:
