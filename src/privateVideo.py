@@ -101,24 +101,54 @@ def getSessionData(webPage):
     global sessionToken
     global sessionCookie
     
-    #find the part of the code that has the needed data
-    data = re.findall('_extend\(window, (.+?)\);\n',
+    #print(webPage.body)
+    
+    """
+    The vuid & the token are stored in different variables, depending if
+    the link is for a playlist or for a single video
+    """
+    #if the link given is a playlist
+    if isPlaylist:
+        data = re.findall('bootstrap_data = {"viewer":(.+?}}})',
                           webPage.body.decode("utf-8"),
                           re.S)
+        """
+        add closing curly brackets at the end of the string to get a proper 
+        json object
+        """
+        data[0] += '}}'
+    #if it is a single video
+    else:
+        #find the part of the code that has the needed data
+        data = re.findall('_extend\(window, (.+?)\);\n',
+                          webPage.body.decode("utf-8"),
+                          re.S)
+    
+    #print(data)
     
     #convert the str from the source to JSON
     dataJson = json.loads(data[0])
     
+   
     #find the token and the 'vuid' in the json
     for key, val in dataJson.items():
+        #in single video
         if key == 'ablincoln_config':
             sessionCookie = val.get('user', 'user_problem').get('vuid', 'vuid_problem')
-            
+           
         if key == 'vimeo':
             sessionToken = val.get('xsrft', 'token_problem')
+                
+        #in playlist
+        if key == 'ablincolnConfig':
+            sessionCookie = val.get('user', 'user_problem').get('vuid', 'vuid_problem')
+                
+        if key == 'xsrft':
+            sessionToken = val    
             
-    print(sessionToken)
-    print(sessionCookie)
+    print('Token:', sessionToken)
+    print('Vuid:', sessionCookie)
+    
 
 #enter the video's password in the appropriate field (FormRequest)
 #https://doc.scrapy.org/en/latest/topics/request-response.html#using-formrequest-from-response-to-simulate-a-user-login
@@ -252,6 +282,8 @@ def downloadPlaylist():
 #select the correct spider
 def checkPublicOrPrivateVideo():
     
+    print('This is a {} link'.format('public' if videoIsPublic else 'private'))
+    
     if videoIsPublic:
         return PublicVideoSpider()
     else:
@@ -266,8 +298,14 @@ def checkIfPlaylist(url):
 
 #retrieve the IDs of the videos in the playlist
 def getPlaylistVideos(response):
-    
+    '''
+    Sends a GET Request to the server, to retrieve a list of the videos of the
+    playlist, or rather their IDs
+    '''
     global playlistIds
+    
+    print(response)
+
     
     #regex to find the IDs in the source code of the page
     data = re.findall("unlisted_hash_map\":(.+?})", 
@@ -362,7 +400,7 @@ class PrivateVideoSpider(scrapy.Spider):
                'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
                'Content-type':'application/x-www-form-urlencoded'}
             
-        #make a 'POST' request with the video's credentials
+        #make a 'POST' request with the video's credentials to access it
         yield scrapy.Request(self.start_urls[0],
                           method='POST', 
                           headers=headers,
