@@ -17,6 +17,7 @@ import json
 import re
 import requests
 from tqdm import tqdm
+import webbrowser
 
 #Scrapy use: 
 #https://docs.scrapy.org/en/latest/topics/dynamic-content.html
@@ -24,16 +25,23 @@ from tqdm import tqdm
 import scrapy
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.log import configure_logging
+from scrapy.http.cookies import CookieJar
 import logging
+
+from requests_toolbelt import MultipartEncoder
 
 import lxml.etree
 import lxml.html
+
+#TODO: set dynamic user-agent:
+#--> list of agents: https://developers.whatismybrowser.com/useragents/explore
+USER_AGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0'
 
 #import the config file to use confidential data
 configPath = '..'
 sys.path.append(os.path.abspath(configPath))
 
-vimeoHome = 'https://vimeo.com'
+VIMEO_HOME = 'https://vimeo.com'
 vimeoDomain = 'vimeo.com'
 
 videoUrl = ''
@@ -53,6 +61,10 @@ sessionCookie = ''
 
 #used to store the IDs corresponding of all the videos from a playlist
 playlistIds = []
+
+#hashed password returned by the server when the the authentication in a 
+#private showcase is successful
+showcase_hashed_pass = ''
 
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
@@ -101,7 +113,7 @@ def getSessionData(webPage):
     global sessionToken
     global sessionCookie
     
-    #print(webPage.body)
+    #print(webPage.text)
     
     """
     The vuid & the token are stored in different variables, depending if
@@ -304,9 +316,9 @@ def getPlaylistVideos(response):
     '''
     global playlistIds
     
-    print(response)
+    #print(response)
 
-    
+    """
     #regex to find the IDs in the source code of the page
     data = re.findall("unlisted_hash_map\":(.+?})", 
                       response.body.decode("utf-8"), 
@@ -319,10 +331,9 @@ def getPlaylistVideos(response):
         playlistIds.append(key)
         
     print(playlistIds)
-
+    """
+    
 #start crawling the website with the spider
-#TODO: set dynamic user-agent:
-#--> list of agents: https://developers.whatismybrowser.com/useragents/explore
 def startCrawling():
     
     global isPlaylist
@@ -333,7 +344,7 @@ def startCrawling():
     currentSpider = checkPublicOrPrivateVideo()
     
     process = CrawlerProcess({
-        'USER_AGENT': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0'
+        'USER_AGENT': USER_AGENT
         })
 
     process.crawl(currentSpider)
@@ -364,7 +375,7 @@ class PrivateVideoSpider(scrapy.Spider):
         
         if isPlaylist:
             privateVidUrl = videoUrl
-            self.download_delay = 2 # 2 sec delay between requests
+            #self.download_delay = 2 # 2 sec delay between requests
         else:
             privateVidUrl = videoUrl + '/password'
         
@@ -375,14 +386,87 @@ class PrivateVideoSpider(scrapy.Spider):
         print("*** Private video: URL = " + videoUrl + " ***")
 
         self.handle_httpstatus_list = [401]
+        self.HTTPERROR_ALLOWED_CODES = [401]
+        
+        self.COOKIES_DEBUG = True
         
         #log level = ERROR, DEBUG, INFO, WARNING...
         self.custom_settings = {
             'HTTPERROR_ALLOWED_CODES': [401],
             'LOG_LEVEL': 'ERROR'
             }
-    
+        
     def parse(self, response):
+                
+        #delimiter used to separate the form data
+        boundary = "---------------------------89844361214769076511231454046"
+        
+        #get the referer url (ex: /showcase/123456)
+        referer_url = re.findall("(\/showcase.+?\d+)", self.start_urls[0])
+        
+        #get the web page's source code
+        #getPageSource(response)
+        
+        #get the session related data from the source code
+        getSessionData(response)
+
+        #form data to check video access password in Vimeo
+        body = '{}\nContent-Disposition: form-data; name="password"\n\n{}\n{}\nContent-Disposition: form-data; name="token"\n\n{}\n{}\nContent-Disposition: form-data; name="referer_url"\n\n{}\n{}--\n'.format(
+        '--'+boundary, videoPassword, '--'+boundary, sessionToken, 
+        '--'+boundary, referer_url[0],'--' + boundary)
+                
+        '''             
+        #header of a request used to access a password protected playlist
+        headers = {'Origin':VIMEO_HOME,
+               'Referer':self.start_urls[0],
+               'User-Agent':USER_AGENT,
+               'Cookie':'vuid='+sessionCookie,
+               'Content-Type':'multipart/form-data; charset=utf-8; boundary=' + boundary,
+               'Accept': '*/*',
+               'DNT': '1',
+               'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
+               'Accept-Encoding': 'gzip, deflate, br'
+               }
+        '''
+        m = MultipartEncoder(fields={
+            'password':videoPassword,
+            'token':sessionToken,
+            'referer_url':referer_url[0]})
+        
+        body = m.to_string()
+
+        cookie = 'vuid=' + sessionCookie
+
+        headers = {'Origin':VIMEO_HOME,
+               'Referer':self.start_urls[0],
+               'User-Agent':USER_AGENT,
+               'Cookie':cookie,
+               'Content-Type':m.content_type
+               }
+        
+        print(type(body))
+        print(body.decode("utf-8"))
+        print(type(headers))
+        print(headers)
+                
+        auth_request = scrapy.Request(self.start_urls[0] + '/auth',
+                          method='POST', 
+                          headers=headers,
+                          body=body.decode("utf-8"),
+                          #cookies={'Cookie':cookie},
+                          meta={'dont_merge_cookies': True},
+                          callback= self.getVideo)
+        
+        """
+        r = requests.get(self.start_urls[0] + '/auth', 
+                          headers=headers)
+        print(r.text)
+        """
+        print(auth_request)
+        
+        return auth_request
+    
+    def parse1(self, response):
         
         #get the web page's source code
         getPageSource(response)
@@ -395,9 +479,9 @@ class PrivateVideoSpider(scrapy.Spider):
         videoPassword, sessionToken)
         
         #header of a request used to access a password protected video
-        headers = {'Origin': 'https://vimeo.com',
+        headers = {'Origin': VIMEO_HOME,
                'Referer':self.start_urls[0],
-               'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0',
+               'User-Agent': USER_AGENT,
                'Content-type':'application/x-www-form-urlencoded'}
             
         #make a 'POST' request with the video's credentials to access it
@@ -409,11 +493,63 @@ class PrivateVideoSpider(scrapy.Spider):
            
     #look for the video's data
     def getVideo(self, response):
-        #print(response.body)
-        getPlaylistVideos(response)
+        
+        global showcase_hashed_pass
+        
+        print(response.body)
+       
+        json_from_response = json.loads(response.body_as_unicode())
+        showcase_hashed_pass = json_from_response["hashed_pass"]
+        print(showcase_hashed_pass)
+        
+        #scrapy.utils.response.open_in_browser(response)
+        print(response.request.url)
+        #webbrowser.open_new_tab(response.url)
+        #print(json.loads(response.body_as_unicode()))
+        #getPlaylistVideos(response)
         #getVideoSpecs(response)   
         #yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
+        #pass
+    
+    def post_auth(self, response):
+       
+        print(response.body)
+        
+        referer_url = re.findall("(\/showcase.+?\d+)", self.start_urls[0])
+        
+        m = MultipartEncoder(fields={
+            'password':videoPassword,
+            'token':sessionToken,
+            'referer_url':referer_url[0]})
+        
+        body = m.to_string()
 
+        headers = {'Origin':VIMEO_HOME,
+               'Referer':self.start_urls[0],
+               'User-Agent':USER_AGENT,
+               'Content-Type':m.content_type
+               }
+        
+        yield scrapy.Request(self.start_urls[0] + '/auth',
+                          method='GET', 
+                          headers=headers,
+                          body=body,
+                          callback= self.getVideo)
+    
+    #make a 'GET' request to retrieve the playlist's videos' Ids
+    def getPlaylistIds(self, response):
+        
+        #header of a request used to access a password protected video
+        headers = {'Origin': VIMEO_HOME,
+               'Referer':self.start_urls[0],
+               'User-Agent': USER_AGENT,
+               'Content-type':'application/x-www-form-urlencoded'}
+        
+        yield scrapy.Request(self.start_urls[0],
+                          method='POST', 
+                          headers=headers,
+                          callback= self.getVideo)#,'Cookie':'vuid=' + sessionCookie
+        
     #download the video
     def downloadVideo(self, response):
         getVideoSource(response)
