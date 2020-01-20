@@ -38,6 +38,10 @@ import lxml.html
 #--> list of agents: https://developers.whatismybrowser.com/useragents/explore
 USER_AGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0'
 
+"""delay between 2 requests. Set higher than 2 seconds to avoid sending the
+requests in a faster than humanly possible fashion (avoid bot detection)"""
+REQUESTS_DELAY = 4
+
 #import the config file to use confidential data
 configPath = '..'
 sys.path.append(os.path.abspath(configPath))
@@ -192,6 +196,7 @@ def getVideoSpecs(response):
     global videoDataSource
     
     print('Getting video informations...')
+    print(response.text)
     
     data = re.findall("window.vimeo.clip_page_config =(.+?);\n", 
                       response.body.decode("utf-8"), 
@@ -212,13 +217,14 @@ def getVideoSpecs(response):
         #get the video's data path from the source code    
         if key == "player":
             videoDataSource = val.get("config_url", "Problem With Url")
-            #print(videoDataSource)
+            print('*************** SOURCE MP4: ' + videoDataSource + ' *************************************')
 
 #retrieve the video from the sources
 def getVideoSource(response):
     
     print('Initializing download...')
-
+    print(response.text)
+    
     data = json.loads(response.body_as_unicode())
     
     for key, val in data.items():
@@ -373,7 +379,7 @@ class PrivateVideoSpider(scrapy.Spider):
         
         if isPlaylist:
             privateVidUrl = videoUrl
-            #self.download_delay = 2 # 2 sec delay between requests
+            self.download_delay = REQUESTS_DELAY#delay in seconds between requests
         else:
             privateVidUrl = videoUrl + '/password'
         
@@ -453,19 +459,13 @@ class PrivateVideoSpider(scrapy.Spider):
         print(headers)
         print(playlist_id)
                 
+        #send request for authentication
         auth_request = scrapy.Request(self.start_urls[0] + '/auth',
                           method='POST', 
                           headers=headers,
                           body=body.decode("utf-8"),
                           meta={'dont_merge_cookies': True},
                           callback= self.getVideo)
-        
-        """
-        r = requests.get(self.start_urls[0] + '/auth', 
-                          headers=headers)
-        print(r.text)
-        """
-        print(auth_request)
         
         return auth_request
     
@@ -518,12 +518,13 @@ class PrivateVideoSpider(scrapy.Spider):
                           headers=headers,
                           callback= self.get_playlist_videos)
         """
-
-    def getVideo(self, response):
         
+    def getVideo(self, response):
+        """Access the playlist"""
+    
         global showcase_hashed_pass
         
-        print(response.body)
+        #print(response.body)
        
         json_from_response = json.loads(response.body_as_unicode())
         showcase_hashed_pass = json_from_response["hashed_pass"]
@@ -549,44 +550,54 @@ class PrivateVideoSpider(scrapy.Spider):
         yield scrapy.Request(album_url,
                           method='GET', 
                           headers=headers,
-                          callback= self.get_playlist_videos)
-        
+                          callback= self.get_playlist_videos,
+                          meta={'dont_merge_cookies': True}
+                          )
         
         #getPlaylistVideos(response)
         #getVideoSpecs(response)   
         #yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
         #pass
         
-    #retrieve the videos' ids from the playlist, the start the downloading process
+    #retrieve the videos' ids from the playlist, then start the downloading process
     def get_playlist_videos(self, response):
-        """retrieve the videos' ids from the playlist, the start the downloading process"""
-        print(response.text)
+        """Retrieve the videos' ids from the playlist, then start the 
+        downloading process for each video"""
+        
+        #print(response.text)
 
         getPlaylistVideos(response.text)
         
-        cookie = 'vuid={}; _abexps=[]; continuous_play_v3=1; {}_albumpassword={}'.format(sessionCookie, playlist_id, showcase_hashed_pass)
+        cookie = 'vuid={}; {}_albumpassword={}; _abexps=%7B%22982%22%3A%22variant%22%7D; continuous_play_v3=1'.format(sessionCookie, playlist_id, showcase_hashed_pass)
+        #loop through the videos to get their ids
+        #for video_id in playlist_video_ids:
         
-        for video_id in playlist_video_ids:
-            
-            url = self.start_urls[0] + '/video/' + video_id
+        video_id = playlist_video_ids[0]
         
-            #header of a request used to access a protected video
-            headers = {'Origin': VIMEO_HOME,
-                       'Referer':self.start_urls[0],
-                       'User-Agent': USER_AGENT,
-                       'Cookie':cookie
-                       }
+        url = self.start_urls[0] + '/video/' + video_id
+        
+        #header of a request used to access a protected video
+        headers = {'Origin':VIMEO_HOME,
+                   'Referer':self.start_urls[0],
+                   'User-Agent':USER_AGENT,
+                   'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                   'Upgrade-Insecure-Requests':'1',
+                   'Cookie':cookie
+                   }
+
+        print('********************************** DOWNLOADING VIDEO:', video_id)
+        print(cookie)
+        print(url)
+        print(headers)
             
-            print('********************************** DOWNLOADING VIDEO:', video_id)
-            print(cookie)
-            print(url)
-            print(headers)
-            
-            #make a 'POST' request with the video's credentials to access it
-            yield scrapy.Request(url,
-                                 method='GET', 
-                                 headers=headers,
-                                 callback= self.downloadVideo)
+        #make a 'POST' request with the video's credentials to access it
+        yield scrapy.Request(url,
+                             method='GET', 
+                             headers=headers,
+                             callback= self.downloadVideo,#,meta={'dont_redirect':True}
+                             dont_filter=True,
+                             meta={'dont_merge_cookies': True}
+                             )
     
     def post_auth(self, response):
        
@@ -622,9 +633,21 @@ class PrivateVideoSpider(scrapy.Spider):
     #download the video
     def downloadVideo(self, response):
         
-        print(response.text)
-        getVideoSpecs(response)##
-        yield scrapy.Request(videoDataSource, callback = getVideoSource(response))
+        #print(response.text)
+        
+        if response.status != 302:
+            getVideoSpecs(response)##
+            yield scrapy.Request(videoDataSource, callback = self.start_download)
+        else:
+            print('ERROR >>> 302 <<<, GETTING REDIRECTED...')
+            print(response.url)
+            yield scrapy.Request(response.urljoin(response.url), 
+                                 callback= self.downloadVideo,
+                                 meta={'dont_merge_cookies': True})
+        
+        
+    def start_download(self, response):
+        getVideoSource(response)
         
 #retrieve the url/password to use       
 getUserArgs()
