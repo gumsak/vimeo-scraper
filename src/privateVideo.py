@@ -34,6 +34,8 @@ from requests_toolbelt import MultipartEncoder
 import lxml.etree
 import lxml.html
 
+import segments_decoder
+
 #TODO: set dynamic user-agent:
 #--> list of agents: https://developers.whatismybrowser.com/useragents/explore
 USER_AGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0'
@@ -55,6 +57,7 @@ videoPassword = ''
 videoTitle = ''
 videoDataSource = ''
 
+#path of the folder where the videos will be saved
 pathName = '../videos/'
 
 videoIsPublic = True
@@ -75,6 +78,9 @@ playlist_video_ids = []
 showcase_hashed_pass = ''
 
 jwt_authorization = ''
+
+#url to get the video's segments
+url_segments = ''
 
 #get the arguments from the command line
 #arg 1 = url, arg 2 = password
@@ -219,14 +225,94 @@ def getVideoSpecs(response):
             videoDataSource = val.get("config_url", "Problem With Url")
             print('*************** SOURCE MP4: ' + videoDataSource + ' *************************************')
 
+def get_video_segments(url):
+    """
+    Retrieve the video & audio segments of the current video
+    """
+    web_page = requests.get(url)
+    print(web_page.text)
+    
+    video_list = json.loads(url)
+    
+    best_quality_video = None
+    best_quality_audio = None
+    quality = 0
+    
+    video_segments_list = []
+    audio_segments_list = []
+    
+    video_base_url = ''
+    audio_base_url = ''
+
+    #look for the segments with the best video resolution
+    for video in video_list['video']:
+        for k, v in video.items():
+            
+            if k == "width":
+                if int(v) > quality:
+                    
+                    quality = int(v)
+                    video_base_url = video.get("base_url")
+                    video_segments_list.clear()
+                    
+                    #get the initial segment
+                    video_segments_list.append(video.get("init_segment"))
+                    
+                    #get the rest of the segments
+                    for segments in video.get("segments"):
+                        for seg_k, seg_v in segments:
+                            if seg_k =="url":
+                                video_segments_list.append(seg_v)
+            
+    print(video_segments_list)
+    
+    quality = 0
+    
+    """look for the segments with the best audio quality
+    ref: https://medium.com/@MicroPyramid/understanding-audio-quality-bit-rate-sample-rate-14286953d71f
+    """
+    for audio in video_list['audio']:
+        for k, v in audio.items():
+            
+            if k == "bitrate":
+                if int(v) > quality:
+                    
+                    quality = int(v)
+                    audio_base_url = audio.get("base_url")
+                    audio_segments_list.clear()
+                    
+                    #get the initial segment
+                    audio_segments_list.append(audio.get("init_segment"))
+                    
+                    #get the rest of the segments
+                    for segments in audio.get("segments"):
+                        for seg_k, seg_v in segments:
+                            if seg_k =="url":
+                                audio_segments_list.append(seg_v)
+    
+    print(audio_segments_list)
+    
+    segments_url = re.findall('(https:\/\/.+?\d\/sep)',url_segments)[0]
+    video_segments_url = segments_url + '/video/'
+    audio_segments_url = segments_url
+
+    #for segment in 
+
 #retrieve the video from the sources
 def getVideoSource(response):
+    
+    global url_segments
     
     print('Initializing download...')
     print(response.text)
     
     data = json.loads(response.body_as_unicode())
+        
+    url_segments = data['request']['files']['dash']['cdns']['akfire_interconnect_quic']['url']
+    print('AKFIRE >>>>>>>>>>>>>>>>>' + url_segments)
     
+    get_video_segments(url_segments)
+    """
     for key, val in data.items():
         if key == "request":
             filesSource = val.get("files").get("progressive")
@@ -238,7 +324,7 @@ def getVideoSource(response):
             fileUrl = formatVideoSource(videoUrl, '.mp4')
             
             downloadVideo(fileUrl, '.mp4')
-
+    """
 #remove end characters from the file's url
 def formatVideoSource(url, extension):
     
@@ -299,11 +385,36 @@ def downloadVideo(url, extension):
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
-#download all the videos from a playlist/album/showcase
-def downloadPlaylist():
+def downloadPlaylist(url, extension):
+    """download all the videos from a playlist/album/showcase"""
+
+    fileName = pathName + videoTitle + extension
     
+    #download the file
+    file = requests.get(url, stream = True)
     
-    pass
+    #get the size in bytes of the received body
+    fileSize = int(file.headers.get('content-length', 0))
+    blockSize = 1024
+    
+    #initialize the progress bar
+    t = tqdm(total = fileSize, unit = 'iB', unit_scale = True)
+    
+    #create the directory where the downloaded files will be saved 
+    try:
+        os.makedirs(os.path.dirname(pathName), exist_ok=False)
+    except FileExistsError:
+        pass
+
+    #save it
+    with open(fileName, 'wb') as f:
+        for data in file.iter_content(blockSize):
+            t.update(len(data))
+            f.write(data)
+            
+    t.close()
+    #urllib.request.urlretrieve(url, videoTitle + extension)
+
 
 #check whether the user is trying to download a public or a private video to
 #select the correct spider
@@ -569,35 +680,37 @@ class PrivateVideoSpider(scrapy.Spider):
         getPlaylistVideos(response.text)
         
         cookie = 'vuid={}; {}_albumpassword={}; _abexps=%7B%22982%22%3A%22variant%22%7D; continuous_play_v3=1'.format(sessionCookie, playlist_id, showcase_hashed_pass)
+        
         #loop through the videos to get their ids
-        #for video_id in playlist_video_ids:
+        for video_id in playlist_video_ids:
         
-        video_id = playlist_video_ids[0]
+        #video_id = playlist_video_ids[0]
         
-        url = self.start_urls[0] + '/video/' + video_id
+            url = self.start_urls[0] + '/video/' + video_id
         
-        #header of a request used to access a protected video
-        headers = {'Origin':VIMEO_HOME,
-                   'Referer':self.start_urls[0],
-                   'User-Agent':USER_AGENT,
-                   'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                   'Upgrade-Insecure-Requests':'1',
-                   'Cookie':cookie
-                   }
+            #header of a request used to access a protected video
+            headers = {'Origin':VIMEO_HOME,
+                       'Referer':self.start_urls[0],
+                       'User-Agent':USER_AGENT,
+                       'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                       'Upgrade-Insecure-Requests':'1',
+                       'Cookie':cookie
+                       }
 
-        print('********************************** DOWNLOADING VIDEO:', video_id)
-        print(cookie)
-        print(url)
-        print(headers)
+            print('++++++++++++++++++++ DOWNLOADING VIDEO: ' + video_id + 
+                  '++++++++++++++++++')
+            #print(cookie)
+            #print(url)
+            #print(headers)
             
-        #make a 'POST' request with the video's credentials to access it
-        yield scrapy.Request(url,
-                             method='GET', 
-                             headers=headers,
-                             callback= self.downloadVideo,#,meta={'dont_redirect':True}
-                             dont_filter=True,
-                             meta={'dont_merge_cookies': True}
-                             )
+            #make a 'POST' request with the video's credentials to access it
+            yield scrapy.Request(url,
+                                 method='GET', 
+                                 headers=headers,
+                                 callback= self.downloadVideo,#,meta={'dont_redirect':True}
+                                 dont_filter=True,
+                                 meta={'dont_merge_cookies': True}
+                                 )
     
     def post_auth(self, response):
        
@@ -644,7 +757,6 @@ class PrivateVideoSpider(scrapy.Spider):
             yield scrapy.Request(response.urljoin(response.url), 
                                  callback= self.downloadVideo,
                                  meta={'dont_merge_cookies': True})
-        
         
     def start_download(self, response):
         getVideoSource(response)
