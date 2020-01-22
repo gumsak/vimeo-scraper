@@ -230,9 +230,9 @@ def get_video_segments(url):
     Retrieve the video & audio segments of the current video
     """
     web_page = requests.get(url)
-    print(web_page.text)
+    #print(web_page.text)
     
-    video_list = json.loads(url)
+    video_list = json.loads(web_page.text)
     
     best_quality_video = None
     best_quality_audio = None
@@ -260,7 +260,7 @@ def get_video_segments(url):
                     
                     #get the rest of the segments
                     for segments in video.get("segments"):
-                        for seg_k, seg_v in segments:
+                        for seg_k, seg_v in segments.items():
                             if seg_k =="url":
                                 video_segments_list.append(seg_v)
             
@@ -286,18 +286,35 @@ def get_video_segments(url):
                     
                     #get the rest of the segments
                     for segments in audio.get("segments"):
-                        for seg_k, seg_v in segments:
+                        for seg_k, seg_v in segments.items():
                             if seg_k =="url":
                                 audio_segments_list.append(seg_v)
     
     print(audio_segments_list)
     
-    segments_url = re.findall('(https:\/\/.+?\d\/sep)',url_segments)[0]
-    video_segments_url = segments_url + '/video/'
-    audio_segments_url = segments_url
+    segments_url = re.findall('(https:\/\/.+?\d\/sep)', url_segments)[0]
+    video_segments_url = segments_url + '/video/' + video_base_url 
+    audio_segments_url = segments_url + '/video/' + audio_base_url
+    
+    print(video_segments_url + '-------------------' + audio_segments_url)
 
-    #for segment in 
-
+    segment_name = ''
+    
+    """download the segments we found"""
+    #Videos
+    for i, segment in enumerate(video_segments_list):
+        
+        """the 1st element of the segment's list is expected to be the 
+        initializer segment"""
+        if i == 0:
+            f = open(pathName + 'init-segment.txt', "w")
+            f.write(segment)
+            f.close
+            #download_playlist(video_segments_url + segment, 'init-segment.txt')
+        else:
+            download_playlist(video_segments_url + segment, segment)           
+    
+    #same with the Audio
 #retrieve the video from the sources
 def getVideoSource(response):
     
@@ -385,11 +402,11 @@ def downloadVideo(url, extension):
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
-def downloadPlaylist(url, extension):
+def download_playlist(url, file_name, extension = None):
     """download all the videos from a playlist/album/showcase"""
 
-    fileName = pathName + videoTitle + extension
-    
+    #fileName = pathName + videoTitle + extension
+    output_file = pathName + file_name
     #download the file
     file = requests.get(url, stream = True)
     
@@ -407,7 +424,7 @@ def downloadPlaylist(url, extension):
         pass
 
     #save it
-    with open(fileName, 'wb') as f:
+    with open(output_file, 'wb') as f:
         for data in file.iter_content(blockSize):
             t.update(len(data))
             f.write(data)
