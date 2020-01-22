@@ -9,7 +9,6 @@ import ffmpy
 import base64
 import os
 import subprocess
-import glob
 
 def cat_segments(segments_directory, segments_extension,
                  has_init_segment, output_name, output_extension, 
@@ -17,13 +16,8 @@ def cat_segments(segments_directory, segments_extension,
                  segment_patern = 'segment-{}.m4s'):
     
     output_file = segments_directory + output_name + output_extension
-    
-    segments_out_file = segments_directory + 'seg' + segments_extension
-    
-    #print(glob.glob(segments_directory + '*'))
-    
+            
     out = open(output_file, "ab")
-    out2 = open(segments_out_file, "ab")
     
     #decode the initial segment (must be the 1st element of the segments list)
     if has_init_segment:
@@ -89,15 +83,11 @@ def encode_mp4(input_file, output_file):
     
     file (string): file to encode    
     """
-    '''
-    ff = ffmpy.FFmpeg(inputs={input_file: None},
-                      outputs={output_file: None}
-                      )
-    
-    ff.cmd('ffmpeg -i' + input_file + '-c copy' + output_file)
-    ff.run()
-    '''
-    subprocess.call(['ffmpeg', '-i', input_file, '-c', 'copy', output_file])
+    subprocess.call(['ffmpeg',
+                     '-i',
+                     input_file, 
+                     '-c', 'copy',
+                     output_file])
     
 def encode_mp3(input_file, output_file):
     """
@@ -149,6 +139,6 @@ def combine_files(video_file, audio_file, output_file):
                      'copy',
                      output_file])
     
-cat_segments('../videos/', '.m4s', True, 'result', '.mp4', 'init-segment.txt', 5)
+#cat_segments('../videos/', '.m4s', True, 'result', '.mp4', 'init-segment.txt', 5)
 
-encode_mp4('../videos/result.mp4', '../videos/out.mp4')
+#encode_mp4('../videos/result.mp4', '../videos/out.mp4')

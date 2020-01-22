@@ -34,7 +34,7 @@ from requests_toolbelt import MultipartEncoder
 import lxml.etree
 import lxml.html
 
-import segments_decoder
+import segments_decoder as segD
 
 #TODO: set dynamic user-agent:
 #--> list of agents: https://developers.whatismybrowser.com/useragents/explore
@@ -202,7 +202,7 @@ def getVideoSpecs(response):
     global videoDataSource
     
     print('Getting video informations...')
-    print(response.text)
+    #print(response.text)
     
     data = re.findall("window.vimeo.clip_page_config =(.+?);\n", 
                       response.body.decode("utf-8"), 
@@ -244,6 +244,7 @@ def get_video_segments(url):
     video_base_url = ''
     audio_base_url = ''
 
+    """
     #look for the segments with the best video resolution
     for video in video_list['video']:
         for k, v in video.items():
@@ -263,7 +264,9 @@ def get_video_segments(url):
                         for seg_k, seg_v in segments.items():
                             if seg_k =="url":
                                 video_segments_list.append(seg_v)
-            
+    """
+    video_segments_list, video_base_url = get_segments(video_list['video'], 'width')       
+    
     print(video_segments_list)
     
     quality = 0
@@ -271,6 +274,7 @@ def get_video_segments(url):
     """look for the segments with the best audio quality
     ref: https://medium.com/@MicroPyramid/understanding-audio-quality-bit-rate-sample-rate-14286953d71f
     """
+    '''
     for audio in video_list['audio']:
         for k, v in audio.items():
             
@@ -289,7 +293,10 @@ def get_video_segments(url):
                         for seg_k, seg_v in segments.items():
                             if seg_k =="url":
                                 audio_segments_list.append(seg_v)
+    '''
     
+    audio_segments_list, audio_base_url = get_segments(video_list['audio'], 'bitrate')       
+
     print(audio_segments_list)
     
     segments_url = re.findall('(https:\/\/.+?\d\/sep)', url_segments)[0]
@@ -302,6 +309,12 @@ def get_video_segments(url):
     
     """download the segments we found"""
     #Videos
+    download_segments(video_segments_url, video_segments_list, 'vid', pathName)
+ 
+    """convert the segments into a video"""
+
+
+    '''
     for i, segment in enumerate(video_segments_list):
         
         """the 1st element of the segment's list is expected to be the 
@@ -313,15 +326,84 @@ def get_video_segments(url):
             #download_playlist(video_segments_url + segment, 'init-segment.txt')
         else:
             download_playlist(video_segments_url + segment, segment)           
-    
+    '''    
     #same with the Audio
+    download_segments(audio_segments_url, audio_segments_list, 'audio', pathName)
+
+    build_video('final', len(video_segments_url))
+
+def get_segments(json_list_media, media_quality):
+    """
+    Find the segments corresponding to the best quality available for this media
+    
+    json_list_media : json containing the different videos available (each one 
+    has a different quality)
+    
+    media_quality (string) : patern used to find and compare video/audio 
+    qualities (ex: 'width' or 'height' for videos, 'bitrate' for audio, etc)
+    
+    Returns : list containing the segments names
+    """
+    
+    quality = 0
+    
+    media_base_url = ''
+    
+    media_segments_list = []
+    
+    for media in json_list_media:
+        for k, v in media.items():
+            
+            if k == media_quality:
+                if int(v) > quality:
+                    
+                    quality = int(v)
+                    media_base_url = media.get("base_url")
+                    media_segments_list.clear()
+                    
+                    #get the initial segment
+                    media_segments_list.append(media.get("init_segment"))
+                    
+                    #get the rest of the segments
+                    for segments in media.get("segments"):
+                        for seg_k, seg_v in segments.items():
+                            if seg_k =="url":
+                                media_segments_list.append(seg_v)
+                                
+    return media_segments_list, media_base_url
+              
+def download_segments(segment_url, media_segments_list, segment_dest_name, 
+                      segments_dest_dir):
+    """
+    Download the segments of the given media    
+
+    segment_url : the basic url of the segments
+    
+    media_segments_list : list of the segments' names to be but in a url
+
+    segment_dest_name : name of the destination file of a segment
+    
+    segments_dest_dir : direcory where the segments will be saved
+    """
+    
+    for i, segment in enumerate(media_segments_list):
+        
+        """the 1st element of the segment's list is expected to be the 
+        initializer segment"""
+        if i == 0:
+            f = open(segments_dest_dir + 'init-' + segment_dest_name + '.txt', "w")
+            f.write(segment)
+            f.close
+        else:
+            download_playlist(segment_url + segment, segment_dest_name + '-' + segment)           
+                  
 #retrieve the video from the sources
 def getVideoSource(response):
     
     global url_segments
     
     print('Initializing download...')
-    print(response.text)
+    #print(response.text)
     
     data = json.loads(response.body_as_unicode())
         
@@ -423,7 +505,7 @@ def download_playlist(url, file_name, extension = None):
     except FileExistsError:
         pass
 
-    #save it
+    #save the files
     with open(output_file, 'wb') as f:
         for data in file.iter_content(blockSize):
             t.update(len(data))
@@ -432,7 +514,27 @@ def download_playlist(url, file_name, extension = None):
     t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
+def build_video(output_file, nb_segments):
+    """
+    Combine the segments of the video together & create a mp4 file from them
 
+    """
+    #cat the video segments
+    segD.cat_segments('../videos/', '.m4s', True, 'tmp', '.mp4', 
+                    'init-vid.txt', nb_segments, None, 'vid-segment-{}.m4s')
+    
+    #cat the audio segments
+    segD.cat_segments('../videos/', '.m4s', True, 'tmp', '.mp3', 
+                    'init-audio.txt', nb_segments, None, 'audio-segment-{}.m4s')
+
+    segD.encode_mp4('tmp.mp4', output_file + '.mp4')
+    segD.encode_mp3('tmp.mp3', output_file  + '.mp3')
+    
+    #combine the video and the audio in the final mp4 file
+    segD.combine_files(output_file + '.mp4',
+                       output_file + '.mp3',
+                       videoTitle + '.mp4')
+    
 #check whether the user is trying to download a public or a private video to
 #select the correct spider
 def checkPublicOrPrivateVideo():
@@ -460,8 +562,7 @@ def getPlaylistVideos(response):
     global playlist_video_ids
     
     #list of the playlist' videos' ids
-    playlist_video_ids = re.findall("\/{}\/videos\/(.\d+)".format(playlist_id)
-                                , response)
+    playlist_video_ids = re.findall("\/{}\/videos\/(.\d+)".format(playlist_id), response)
 
     print(playlist_video_ids)
     
