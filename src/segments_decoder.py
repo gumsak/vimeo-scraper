@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Program used to put together video/audio segments, to produce a playable 
-video (mp4, avi...)
+video (mp4, avi...). 
+Uses ffmpy to exectue FFmpeg commands: 
+    https://ffmpy.readthedocs.io/en/latest/ffmpy.html
 """
 
 from __future__ import print_function
@@ -100,9 +102,6 @@ def cat_segments(segments_directory, segments_extension,
                 infile.close()
     """       
     out.close()
-
-    #outfile.close()
-    #infile.close()
     
 def encode_mp4(input_file, output_file):
     """
@@ -110,12 +109,20 @@ def encode_mp4(input_file, output_file):
     
     file (string): file to encode    
     """
+    
+    '''
     subprocess.call(['ffmpeg',
                      '-y',
                      '-i',
                      input_file, 
                      '-c', 'copy',
                      output_file])
+    '''
+    ff = ffmpy.FFmpeg(inputs= {input_file:None},
+                 outputs= {output_file:'-c copy'}, 
+                 global_options = ('-y')
+                 )
+    ff.run()
     
 def encode_mp3(input_file, output_file):
     """
@@ -125,6 +132,13 @@ def encode_mp3(input_file, output_file):
     
     output_file : name of the mp3 file generated (add file extension in name)
     """
+    
+    ff = ffmpy.FFmpeg(executable= '/usr/bin/ffmpeg', 
+                 inputs= {input_file:None},
+                 outputs= {output_file:'-y -vn -ar 44100 -ac 2 -b:a 192k'}, 
+                 global_options = ('-y')
+                 )
+    ff.run()
     
     """
     subprocess.call(['ffmpeg',
@@ -137,6 +151,7 @@ def encode_mp3(input_file, output_file):
                          output_file])
     """
     
+    """
     #ref https://stackoverflow.com/a/12952172
     subprocess.call(['/usr/bin/ffmpeg',
                      '-y',
@@ -150,6 +165,7 @@ def encode_mp3(input_file, output_file):
                          '-b:a',
                          '192k',
                          output_file])
+    """
     
 def delete_files(extension, directory=''):
     """Delete specific files from the given directory
@@ -171,6 +187,7 @@ def delete_files(extension, directory=''):
 def combine_files(video_file, audio_file, output_file):
     """Join an audio file & a video file to create a new video file with sound"""
     
+    """
     subprocess.call(['ffmpeg',
                      '-y',
                      '-i',
@@ -180,3 +197,10 @@ def combine_files(video_file, audio_file, output_file):
                      '-c',
                      'copy',
                      output_file])
+    """
+
+    ff = ffmpy.FFmpeg(inputs= {video_file:None, audio_file:None},
+                 outputs= {output_file:'-c copy'}, 
+                 global_options = ('-y')
+                 )
+    ff.run()
