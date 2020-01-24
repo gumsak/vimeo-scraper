@@ -84,6 +84,7 @@ def encode_mp4(input_file, output_file):
     file (string): file to encode    
     """
     subprocess.call(['ffmpeg',
+                     '-y',
                      '-i',
                      input_file, 
                      '-c', 'copy',
@@ -96,7 +97,7 @@ def encode_mp3(input_file, output_file):
     DESCRIPTION.
     output_file : TYPE
     DESCRIPTION.
-    
+    """
     """
     subprocess.call(['ffmpeg',
                          '-i',
@@ -105,6 +106,21 @@ def encode_mp3(input_file, output_file):
                          'libmp3lame',
                          '-qscale:a',
                          '2',
+                         output_file])
+    """
+    
+    #ref https://stackoverflow.com/a/12952172
+    subprocess.call(['/usr/bin/ffmpeg',
+                     '-y',
+                         '-i',
+                         input_file,
+                         '-vn',
+                         '-ar',
+                         '44100',
+                         '-ac',
+                         '2',
+                         '-b:a',
+                         '192k',
                          output_file])
     
 def delete_files(extension, directory=''):
@@ -131,14 +147,11 @@ def combine_files(video_file, audio_file, output_file):
     """join an audio file and a video file to create a new file"""
     
     subprocess.call(['ffmpeg',
+                     '-y',
                      '-i',
                      video_file,
-                     'i',
+                     '-i',
                      audio_file,
                      '-c',
                      'copy',
                      output_file])
-    
-#cat_segments('../videos/', '.m4s', True, 'result', '.mp4', 'init-segment.txt', 5)
-
-#encode_mp4('../videos/result.mp4', '../videos/out.mp4')
