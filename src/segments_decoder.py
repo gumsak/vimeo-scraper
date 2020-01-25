@@ -11,6 +11,8 @@ import ffmpy
 import base64
 import os
 import subprocess
+import glob
+import fnmatch
 
 def cat_segments(segments_directory, segments_extension,
                  has_init_segment, output_name, output_extension, 
@@ -70,10 +72,6 @@ def cat_segments(segments_directory, segments_extension,
     
     #cat all the segments in order
     #ref: https://stackoverflow.com/a/58575327
-    
-    #segments_file = 'final.m4s'
-    #m4s_file = open(segments_directory + segments_file, "a")
-    
     for i in range (0, nb_segments):
         file_to_open = segment_pattern.format(str(i+1))
         full_path = os.path.join(segments_directory, file_to_open)
@@ -124,7 +122,7 @@ def encode_mp4(input_file, output_file):
                  )
     ff.run()
     
-def encode_mp3(input_file, output_file):
+def encode_mp3(input_file, output_file, ffmpeg_path= 'ffmpeg'):
     """
     Encode a binary sound file to produce an mp3 file 
     
@@ -133,7 +131,7 @@ def encode_mp3(input_file, output_file):
     output_file : name of the mp3 file generated (add file extension in name)
     """
     
-    ff = ffmpy.FFmpeg(executable= '/usr/bin/ffmpeg', 
+    ff = ffmpy.FFmpeg(executable= ffmpeg_path, 
                  inputs= {input_file:None},
                  outputs= {output_file:'-y -vn -ar 44100 -ac 2 -b:a 192k'}, 
                  global_options = ('-y')
@@ -167,23 +165,31 @@ def encode_mp3(input_file, output_file):
                          output_file])
     """
     
-def delete_files(extension, directory=''):
+def delete_files(directory=''):
     """Delete specific files from the given directory
     
-    extension (string): extension of the files to delete
+    extension (string list): extension of the files to delete
     
     directory (string): (optional) path of the directory to check
     """
-
+         
     for file in os.listdir(directory):
-        if file.endswith(extension):
-            file_path = os.path.join(directory, file)
-                
+        #for extension_type in extensions:
+            
+        #if file.endswith(extension_type):
+        if fnmatch.fnmatch(file, '*.m4s') or fnmatch.fnmatch(file, '*.txt'):
+            #file_path = os.path.join(directory, file)
             try:
-                os.remove(file)
+                os.remove(directory + file)
             except:
                 print("Error while removing file")
-    
+          
+        if fnmatch.fnmatch(file, 'tmp.mp*') or fnmatch.fnmatch(file, 'fin.mp*'):
+            try:
+                os.remove(directory + file)
+            except:
+                print("Error while removing file")
+                                    
 def combine_files(video_file, audio_file, output_file):
     """Join an audio file & a video file to create a new video file with sound"""
     
