@@ -10,6 +10,7 @@ TODO: implement whole albums/playlists download
 TODO: check url validity, handle response status code, missing password, etc
 TODO: GIT - merge this branch with master
 TODO: add Docstring to functions
+TODO: add support for single videos with 'showcase' like url
 """
 #import libs
 from __future__ import print_function
@@ -69,9 +70,6 @@ sessionCookie = ''
 
 #id of the playlist to download
 playlist_id = ''
-
-#used to store the IDs corresponding of all the videos from a playlist
-playlist_video_ids = []
 
 #hashed password returned by the server when the the authentication in a 
 #private showcase is successful
@@ -235,11 +233,7 @@ def get_video_segments(url):
     #print(web_page.text)
     
     video_list = json.loads(web_page.text)
-    
-    best_quality_video = None
-    best_quality_audio = None
-    quality = 0
-    
+        
     video_segments_list = []
     audio_segments_list = []
     
@@ -270,9 +264,7 @@ def get_video_segments(url):
     video_segments_list, video_base_url = get_segments(video_list['video'], 'width')       
     
     print(video_segments_list)
-    
-    quality = 0
-    
+        
     """look for the segments with the best audio quality
     ref: https://medium.com/@MicroPyramid/understanding-audio-quality-bit-rate-sample-rate-14286953d71f
     """
@@ -307,8 +299,8 @@ def get_video_segments(url):
     
     print(video_segments_url + '-------------------' + audio_segments_url)
 
-    segment_name = ''
-    
+    print('\n\nNOW DOWNLOADING VIDEO & AUDIO FRAGMENTS.....\n\n')
+        
     """download the segments we found"""
     #Videos
     download_segments(video_segments_url, video_segments_list, 'vid', pathName)
@@ -333,7 +325,7 @@ def get_video_segments(url):
     download_segments(audio_segments_url, audio_segments_list, 'audio', pathName)
 
     # - 1 because the init-segment shouldn't be counted
-    build_video('../videos/final', len(video_segments_list) - 1)
+    build_video('../videos/fin', len(video_segments_list) - 1)
 
 def get_segments(json_list_media, media_quality):
     """
@@ -411,7 +403,7 @@ def getVideoSource(response):
     data = json.loads(response.body_as_unicode())
         
     url_segments = data['request']['files']['dash']['cdns']['akfire_interconnect_quic']['url']
-    print('AKFIRE >>>>>>>>>>>>>>>>>' + url_segments)
+    #print('AKFIRE >>>>>>>>>>>>>>>>>' + url_segments)
     
     get_video_segments(url_segments)
     """
@@ -531,24 +523,16 @@ def build_video(output_file, nb_segments):
                     'init-audio.txt', nb_segments, None, 'audio-segment-{}.m4s')
 
     segD.encode_mp4('../videos/tmp.mp4', output_file + '.mp4')
-    segD.encode_mp3('../videos/tmp.mp3', output_file  + '.mp3')
+    segD.encode_mp3('../videos/tmp.mp3', output_file  + '.mp3', '/usr/bin/ffmpeg')
     
     #combine the video and the audio in the final mp4 file
     segD.combine_files(output_file + '.mp4',
                        output_file + '.mp3',
                        '../videos/' + videoTitle + '.mp4')
     
-#check whether the user is trying to download a public or a private video to
-#select the correct spider
-def checkPublicOrPrivateVideo():
+    #delete useless files
+    segD.delete_files('../videos/')
     
-    print('This is a {} link'.format('public' if videoIsPublic else 'private'))
-    
-    if videoIsPublic:
-        return PublicVideoSpider()
-    else:
-        return Playlist_video_spider()
-
 #check if the user provided a link to a playlist
 def checkIfPlaylist(url):
     
@@ -557,17 +541,19 @@ def checkIfPlaylist(url):
     return True
 
 #retrieve the IDs of the videos in the playlist
-def getPlaylistVideos(response):
+def getPlaylistVideos(response, video_url_pattern):
     '''
     Sends a GET Request to the server, to retrieve a list of the videos of the
     playlist, or rather their IDs
     '''
-    global playlist_video_ids
+    playlist_video_ids = []
     
     #list of the playlist' videos' ids
-    playlist_video_ids = re.findall("\/{}\/videos\/(.\d+)".format(playlist_id), response)
+    playlist_video_ids = re.findall(video_url_pattern, response)
 
     print(playlist_video_ids)
+    
+    return playlist_video_ids
     
 def get_spider_type():
     """
@@ -579,8 +565,8 @@ def get_spider_type():
     
     isPlaylist = checkIfPlaylist(videoUrl)
     
-    print('This is a {} '.format('public' if videoIsPublic else 'private') +
-          '{}.'.format('playlist' if isPlaylist else 'video'))
+    print('\n\nThis is a {} '.format('public' if videoIsPublic else 'private') +
+          '{}.\n\n'.format('playlist' if isPlaylist else 'video'))
 
     if isPlaylist:
         return Playlist_video_spider()
@@ -595,15 +581,7 @@ def startCrawling():
     of video(s) it has to download (public, private, playlist...).
     """
     
-    '''
-    global isPlaylist
-    
-    isPlaylist = checkIfPlaylist(videoUrl)
-        print('This is a {}.'.format('playlist' if isPlaylist else 'single video'))
-
-    '''
-    
-    current_spider = get_spider_type()#checkPublicOrPrivateVideo()
+    current_spider = get_spider_type()
     
     process = CrawlerProcess({
         'USER_AGENT': USER_AGENT
@@ -611,29 +589,11 @@ def startCrawling():
 
     process.crawl(current_spider)
     process.start() # the script will block here until the crawling is finished
-    
-#spider used to parse a public video
-class PublicVideoSpider(scrapy.Spider):
-    
-    def __init__(self):
-    
-        self.name = 'publicVimeoSpider'
-        self.allowed_domains = [vimeoDomain]
-        self.start_urls=[videoUrl]
-        print("*** Public video: URL = " + videoUrl + " ***")
-
-    def parse(self, response):
-        getVideoSpecs(response)
-        
-        yield scrapy.Request(videoDataSource, callback = self.getVideo)
-        
-    def getVideo(self, response):
-        getVideoSource(response)
 
 #spider used to parse one video (public or private)
 class Single_video_spider(scrapy.Spider):
     """
-    Spider used for a simple private/public video 
+    Spider used to download a single private/public video 
     """
     def __init__(self):
         
@@ -660,16 +620,15 @@ class Single_video_spider(scrapy.Spider):
 
     def parse(self, response):
         
-        #getVideoSpecs(response)
-
         #if the video is public, just get its informations and download it
         if videoIsPublic:
-            yield scrapy.Request(videoDataSource, callback = self.get_video_data)
+            getVideoSpecs(response)
+            yield scrapy.Request(videoDataSource, callback = self.download_video)
         
-        #if the video is private, access it with its password, the just get its
-        #informations and download it
+        #if the video is private, then it is necessary to access it first with
+        #its password
         else:
-            yield scrapy.Request(videoDataSource, callback = self.get_private_video)
+            yield scrapy.Request(self.start_urls[0], callback = self.get_private_video)
 
     def get_private_video(self, response):
         
@@ -707,7 +666,10 @@ class Single_video_spider(scrapy.Spider):
 
 #spider used to parse a private video
 class Playlist_video_spider(scrapy.Spider):
-    
+    """
+    Spider used to download all the videos from a private/public 
+    showcase (playlist) 
+    """
     def __init__(self):
         
         '''
@@ -717,11 +679,11 @@ class Playlist_video_spider(scrapy.Spider):
         '''    
         showcase_url = videoUrl
         
-        self.name = 'privateVimeoSpider'
+        self.name = 'playlist_video_spider'
         self.allowed_domains = [vimeoDomain]
         self.start_urls=[showcase_url]
     
-        print("*** Private video: URL = " + videoUrl + " ***")
+        print("*** Playlist URL: " + videoUrl + " ***")
 
         self.download_delay = REQUESTS_DELAY#delay in seconds between requests
         self.handle_httpstatus_list = [401]
@@ -748,75 +710,72 @@ class Playlist_video_spider(scrapy.Spider):
         #get the referer url (ex: /showcase/123456)
         referer_url = re.findall("(\/showcase.+?\d+)", self.start_urls[0])
         
-        #get the web page's source code
-        #getPageSource(response)
-        
         #get the session related data from the source code
         getSessionData(response)
 
-        #form data to check video access password in Vimeo
-        body = '{}\nContent-Disposition: form-data; name="password"\n\n{}\n{}\nContent-Disposition: form-data; name="token"\n\n{}\n{}\nContent-Disposition: form-data; name="referer_url"\n\n{}\n{}--\n'.format(
-        '--'+boundary, videoPassword, '--'+boundary, sessionToken, 
-        '--'+boundary, referer_url[0],'--' + boundary)
-                
+        #TODO: set dynamic pages/videos per page number
+        
         #body to send with the request
-        m = MultipartEncoder(fields={
+        m= MultipartEncoder(fields={
             'password':videoPassword,
             'token':sessionToken,
             'referer_url':referer_url[0]})
-        
+            
         body = m.to_string()
-
+    
         cookie = 'vuid=' + sessionCookie
-
+    
         headers = {'Origin':VIMEO_HOME,
-               'Referer':self.start_urls[0],
-               'User-Agent':USER_AGENT,
-               'Cookie':cookie,
-               'Content-Type':m.content_type
-               }
-        
+                   'Referer':self.start_urls[0],
+                   'User-Agent':USER_AGENT,
+                   'Cookie':cookie,
+                   'Content-Type':m.content_type
+                   }
+            
         print(type(body))
         print(body.decode("utf-8"))
         print(type(headers))
         print(headers)
         print(playlist_id)
-                
-        #send request for authentication
-        auth_request = scrapy.Request(self.start_urls[0] + '/auth',
-                          method='POST', 
-                          headers=headers,
-                          body=body.decode("utf-8"),
-                          meta={'dont_merge_cookies': True},
-                          callback= self.getVideo)
-        
-        return auth_request
-    
-    #make a request to get the page showing the videos from the playlist
-    def access_showcase():
-        
-        page = 1
-        per_page = 12
-        
-        album_url = 'https://api.vimeo.com/albums/{}/videos?page={}&sort=manual&fields=description%2Cduration%2Cis_free%2Clive%2Cname%2Cpictures.sizes.link%2Cpictures.sizes.width%2Cpictures.uri%2Cprivacy.download%2Cprivacy.view%2Ctype%2Curi%2Cuser.link%2Cuser.name%2Cuser.pictures.sizes.link%2Cuser.pictures.sizes.width%2Cuser.uri&per_page=12&filter=&_hashed_pass={}'.format(playlist_id, page, per_page, showcase_hashed_pass)
-        
-        #Accept: application/vnd.vimeo.video;version=3.4.1
-        headers = {'Origin':VIMEO_HOME,
-                   'Referer':VIMEO_HOME,
+                    
+        #if the playlist is public, go straight to its content's data
+        if videoIsPublic:
+            
+            page=1
+            per_page=12
+            
+            url ='https://api.vimeo.com/albums/{}/videos?page={}&sort=manual&fields=description%2Cduration%2Cis_free%2Clive%2Cname%2Cpictures.sizes.link%2Cpictures.sizes.width%2Cpictures.uri%2Cprivacy.download%2Cprivacy.view%2Ctype%2Curi%2Cuser.link%2Cuser.name%2Cuser.pictures.sizes.link%2Cuser.pictures.sizes.width%2Cuser.uri&per_page={}&filter=&_hashed_pass={}'.format(playlist_id, page, per_page, '')
+            cookie = 'vuid={}; _abexps=%7B%22982%22%3A%22variant%22%7D; continuous_play_v3=1; vimeo_gdpr_optin=1'.format(sessionCookie)
+
+            headers = {'Origin':VIMEO_HOME,
+                   'Referer':self.start_urls[0],
                    'User-Agent':USER_AGENT,
-                   'Content-Type':'application/json',
-                   'Authorization': 'jwt ' + jwt_authorization
+                   'Cookie':cookie,
+                   'Authorization':'jwt ' + jwt_authorization
                    }
-        """
-        #make a 'GET' request with the playlist's data
-        yield scrapy.Request(album_url,
-                          method='GET', 
-                          headers=headers,
-                          callback= self.get_playlist_videos)
-        """
+            
+            playlist_request = scrapy.Request(url,
+                              method='GET',
+                              headers=headers,
+                              callback= self.get_public_playlist)
+            
+            return playlist_request
         
-    def getVideo(self, response):
-        """Access the playlist"""
+        #get a private playlist
+        else:
+    
+            #send request for authentication
+            auth_request = scrapy.Request(self.start_urls[0] + '/auth',
+                              method='POST', 
+                              headers=headers,
+                              body=body.decode("utf-8"),
+                              meta={'dont_merge_cookies': True},
+                              callback= self.access_private_showcase)
+            
+            return auth_request
+        
+    def access_private_showcase(self, response):
+        """Make a request to access the page listing the videos from the playlist"""
     
         global showcase_hashed_pass
                
@@ -843,7 +802,7 @@ class Playlist_video_spider(scrapy.Spider):
         yield scrapy.Request(album_url,
                           method='GET', 
                           headers=headers,
-                          callback= self.get_playlist_videos,
+                          callback= self.get_private_playlist,
                           meta={'dont_merge_cookies': True}
                           )
         
@@ -852,14 +811,50 @@ class Playlist_video_spider(scrapy.Spider):
         #yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
         #pass
         
+    def get_public_playlist(self, response):
+        """Retrieve the videos' ids from the playlist, then start the 
+        downloading process for each video"""
+        
+        print(response.text)
+
+        playlist_video_ids = getPlaylistVideos(response.text, 
+                                               "\/videos\/(.\d+)(?!.*\/)")
+        
+        #loop through the videos to get their ids
+        for video_id in playlist_video_ids:
+        
+        #video_id = playlist_video_ids[0]
+        
+            url = self.start_urls[0] + '/video/' + video_id
+        
+            #header of a request used to access a protected video
+            headers = {'Origin':VIMEO_HOME,
+                       'Referer':self.start_urls[0],
+                       'User-Agent':USER_AGENT,
+                       'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                       'Upgrade-Insecure-Requests':'1'#,'Cookie':cookie
+                       }
+            
+            #print(cookie)
+            #print(url)
+            #print(headers)
+            
+            #make a 'POST' request with the video's credentials to access it
+            yield scrapy.Request(url,
+                                 method='GET',#headers=headers,
+                                 callback= self.downloadVideo,#,meta={'dont_redirect':True}
+                                 dont_filter=True#,meta={'dont_merge_cookies': True}
+                                 )
+        
     #retrieve the videos' ids from the playlist, then start the downloading process
-    def get_playlist_videos(self, response):
+    def get_private_playlist(self, response):
         """Retrieve the videos' ids from the playlist, then start the 
         downloading process for each video"""
         
         #print(response.text)
 
-        getPlaylistVideos(response.text)
+        playlist_video_ids = getPlaylistVideos(response.text, 
+                                               "\/{}\/videos\/(.\d+)".format(playlist_id))
         
         cookie = 'vuid={}; {}_albumpassword={}; _abexps=%7B%22982%22%3A%22variant%22%7D; continuous_play_v3=1'.format(sessionCookie, playlist_id, showcase_hashed_pass)
         
@@ -878,9 +873,7 @@ class Playlist_video_spider(scrapy.Spider):
                        'Upgrade-Insecure-Requests':'1',
                        'Cookie':cookie
                        }
-
-            print('++++++++++++++++++++ DOWNLOADING VIDEO: ' + video_id + 
-                  '++++++++++++++++++')
+            
             #print(cookie)
             #print(url)
             #print(headers)
@@ -898,9 +891,9 @@ class Playlist_video_spider(scrapy.Spider):
     def downloadVideo(self, response):
         
         #print(response.text)
-        
+         
         if response.status != 302:
-            getVideoSpecs(response)##
+            getVideoSpecs(response)
             yield scrapy.Request(videoDataSource, callback = self.start_download)
         else:
             print('ERROR >>> 302 <<<, GETTING REDIRECTED...')
