@@ -4,6 +4,8 @@ Program used to put together video/audio segments, to produce a playable
 video (mp4, avi...). 
 Uses ffmpy to exectue FFmpeg commands: 
     https://ffmpy.readthedocs.io/en/latest/ffmpy.html
+    
+TODO: set more secured names for the temp files to avoid deleting a user's video
 """
 
 from __future__ import print_function
@@ -101,6 +103,40 @@ def cat_segments(segments_directory, segments_extension,
     """       
     out.close()
     
+def cat_files(segments_directory, init_file, segment_file,
+              output_name, output_extension = ''):
+    """
+    Concatenate 2 specific files (an init file and a file containing the rest 
+    of the files/segments put together)
+
+    segments_directory (string): directory containing the downloaded segments 
+    (ex: '/videos/')
+        
+    init_file (string): name of the file containing the initial segment 
+        
+    segment_file (string): name of the file containing the rest of the segments
+        
+    output_name (string): name of the output file; resulting on the concatenation 
+    of the init file and segment file
+        
+    output_extension (string): (optional) file extension type; useless if it 
+    is already put in the output_name (will lead to an error actually)
+    """
+    output_file = segments_directory + output_name + output_extension
+            
+    out = open(output_file, "ab")
+    
+    #decode the initial segment (must be the 1st element of the segments list)
+    f = open(segments_directory + init_file, "rb")  
+    base64.decode(f, out) 
+    f.close()
+    
+    segment = open(segments_directory + segment_file, "rb")  
+    out.write(segment.read())
+    segment.close()
+
+    out.close()
+    
 def encode_mp4(input_file, output_file):
     """
     Encodes the given file to .mp4 using FFMPEG (through FFMPY)
@@ -129,6 +165,9 @@ def encode_mp3(input_file, output_file, ffmpeg_path= 'ffmpeg'):
     input_file : (binary) audio file to encode
     
     output_file : name of the mp3 file generated (add file extension in name)
+    
+    ffmpeg_path (string): (optional) path to your ffmpeg exec - '/usr/bin/ffmpeg' 
+    is the standard path and it is generally included in your $PATH
     """
     
     ff = ffmpy.FFmpeg(executable= ffmpeg_path, 
