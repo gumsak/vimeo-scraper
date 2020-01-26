@@ -4,9 +4,7 @@
 TODO: handle specific 'errors': file with same name already exists, download is 
 interupted, etc
 TODO: use python's naming conventions
-TODO: implement video segments' download if we can't get the .mp4 file
 TODO: set more solid regex search
-TODO: implement whole albums/playlists download
 TODO: check url validity, handle response status code, missing password, etc
 TODO: GIT - merge this branch with master
 TODO: add Docstring to functions
@@ -240,6 +238,12 @@ def get_video_segments(url):
     video_base_url = ''
     audio_base_url = ''
 
+    #create the directory where the downloaded files will be saved 
+    try:
+        os.makedirs(os.path.dirname(pathName), exist_ok=False)
+    except FileExistsError:
+        print('\nERROR WHILE CREATING DESTINATION FOLDER\n')
+
     """
     #look for the segments with the best video resolution
     for video in video_list['video']:
@@ -374,7 +378,8 @@ def download_segments(segment_url, media_segments_list, segment_dest_name,
 
     segment_url : the basic url of the segments
     
-    media_segments_list : list of the segments' names to be but in a url
+    media_segments_list : list of the segments' names to be put in the basic 
+    segment url
 
     segment_dest_name : name of the destination file of a segment
     
@@ -390,7 +395,7 @@ def download_segments(segment_url, media_segments_list, segment_dest_name,
             f.write(segment)
             f.close
         else:
-            download_playlist(segment_url + segment, segment_dest_name + '-' + segment)           
+            download_playlist(segment_url + segment, segment_dest_name + '-segment.m4s')# + segment)           
                   
 #retrieve the video from the sources
 def getVideoSource(response):
@@ -485,28 +490,30 @@ def download_playlist(url, file_name, extension = None):
     #fileName = pathName + videoTitle + extension
     output_file = pathName + file_name
     #download the file
-    file = requests.get(url, stream = True)
-    
+    file = requests.get(url)#, stream = True)
+    #print(file.text)
     #get the size in bytes of the received body
     fileSize = int(file.headers.get('content-length', 0))
     blockSize = 1024
     
     #initialize the progress bar
-    t = tqdm(total = fileSize, unit = 'iB', unit_scale = True)
+    #t = tqdm(total = fileSize, unit = 'iB', unit_scale = True)
     
-    #create the directory where the downloaded files will be saved 
-    try:
-        os.makedirs(os.path.dirname(pathName), exist_ok=False)
-    except FileExistsError:
-        pass
-
+    #save the files
+    with open(output_file, 'ab') as f:
+        f.write(file.content)
+        
+    f.close()
+    '''
     #save the files
     with open(output_file, 'wb') as f:
+        
+        
         for data in file.iter_content(blockSize):
             t.update(len(data))
             f.write(data)
-            
-    t.close()
+    '''    
+    #t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
 def build_video(output_file, nb_segments):
@@ -514,6 +521,7 @@ def build_video(output_file, nb_segments):
     Combine the segments of the video together & create a mp4 file from them
 
     """
+    '''
     #cat the video segments
     segD.cat_segments('../videos/', '.m4s', True, 'tmp', '.mp4', 
                     'init-vid.txt', nb_segments, None, 'vid-segment-{}.m4s')
@@ -521,10 +529,17 @@ def build_video(output_file, nb_segments):
     #cat the audio segments
     segD.cat_segments('../videos/', '.m4s', True, 'tmp', '.mp3', 
                     'init-audio.txt', nb_segments, None, 'audio-segment-{}.m4s')
-
+    '''
+    
+    #cat the video segments
+    segD.cat_files('../videos/', 'init-audio.txt','audio-segment.m4s', 'tmp', '.mp3')
+    
+    #cat the audio segments    
+    segD.cat_files('../videos/', 'init-vid.txt','vid-segment.m4s', 'tmp', '.mp4')
+     
     segD.encode_mp4('../videos/tmp.mp4', output_file + '.mp4')
     segD.encode_mp3('../videos/tmp.mp3', output_file  + '.mp3', '/usr/bin/ffmpeg')
-    
+        
     #combine the video and the audio in the final mp4 file
     segD.combine_files(output_file + '.mp4',
                        output_file + '.mp3',
