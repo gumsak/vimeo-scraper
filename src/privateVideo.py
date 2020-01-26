@@ -17,7 +17,6 @@ import json
 import re
 import requests
 from tqdm import tqdm
-import webbrowser
 
 #Scrapy use: 
 #https://docs.scrapy.org/en/latest/topics/dynamic-content.html
@@ -25,7 +24,6 @@ import webbrowser
 import scrapy
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.log import configure_logging
-from scrapy.http.cookies import CookieJar
 import logging
 
 from requests_toolbelt import MultipartEncoder
@@ -57,7 +55,7 @@ videoTitle = ''
 videoDataSource = ''
 
 #path of the folder where the videos will be saved
-pathName = '../videos/'
+OUTPUT_DIR_PATH = '../videos/'
 
 videoIsPublic = True
 isPlaylist = False
@@ -86,7 +84,7 @@ def getUserArgs():
     global videoIsPublic
     global isPlaylist
     
-    isPlaylist = checkIfPlaylist(videoUrl)
+    #isPlaylist = check_if_is_playlist(videoUrl)
     
     #user gave url & password
     if len(sys.argv) == 3:
@@ -179,18 +177,7 @@ def getSessionData(webPage):
     print('Vuid:', sessionCookie)
     print('JWT AUTH:', jwt_authorization)
 
-#enter the video's password in the appropriate field (FormRequest)
-#https://doc.scrapy.org/en/latest/topics/request-response.html#using-formrequest-from-response-to-simulate-a-user-login
-def enterPassword(response, func):
-    
-    return scrapy.FormRequest.from_response(
-            response,
-            meta={'dont_redirect': True},
-            formid='pw_form',
-            formdata={'password': videoPassword},
-            callback=func)
-
-#define the actions to take if the password is wrong
+#TODO: define the actions to take if the password is wrong
 def handleWrongPassword():
     pass
 
@@ -221,7 +208,7 @@ def getVideoSpecs(response):
         #get the video's data path from the source code    
         if key == "player":
             videoDataSource = val.get("config_url", "Problem With Url")
-            print('*************** SOURCE MP4: ' + videoDataSource + ' *************************************')
+            #print('******** SOURCE MP4: ' + videoDataSource + ' **********')
 
 def get_video_segments(url):
     """
@@ -240,60 +227,21 @@ def get_video_segments(url):
 
     #create the directory where the downloaded files will be saved 
     try:
-        os.makedirs(os.path.dirname(pathName), exist_ok=False)
+        os.makedirs(os.path.dirname(OUTPUT_DIR_PATH), exist_ok=False)
     except FileExistsError:
         print('\nERROR WHILE CREATING DESTINATION FOLDER\n')
 
     """
-    #look for the segments with the best video resolution
-    for video in video_list['video']:
-        for k, v in video.items():
-            
-            if k == "width":
-                if int(v) > quality:
-                    
-                    quality = int(v)
-                    video_base_url = video.get("base_url")
-                    video_segments_list.clear()
-                    
-                    #get the initial segment
-                    video_segments_list.append(video.get("init_segment"))
-                    
-                    #get the rest of the segments
-                    for segments in video.get("segments"):
-                        for seg_k, seg_v in segments.items():
-                            if seg_k =="url":
-                                video_segments_list.append(seg_v)
+    Find the segments corresponding to the best quality available for this media
     """
-    video_segments_list, video_base_url = get_segments(video_list['video'], 'width')       
+    #for the video segments
+    video_segments_list, video_base_url = get_media_segments(video_list['video'], 'width')       
     
     print(video_segments_list)
         
-    """look for the segments with the best audio quality
-    ref: https://medium.com/@MicroPyramid/understanding-audio-quality-bit-rate-sample-rate-14286953d71f
-    """
-    '''
-    for audio in video_list['audio']:
-        for k, v in audio.items():
-            
-            if k == "bitrate":
-                if int(v) > quality:
-                    
-                    quality = int(v)
-                    audio_base_url = audio.get("base_url")
-                    audio_segments_list.clear()
-                    
-                    #get the initial segment
-                    audio_segments_list.append(audio.get("init_segment"))
-                    
-                    #get the rest of the segments
-                    for segments in audio.get("segments"):
-                        for seg_k, seg_v in segments.items():
-                            if seg_k =="url":
-                                audio_segments_list.append(seg_v)
-    '''
-    
-    audio_segments_list, audio_base_url = get_segments(video_list['audio'], 'bitrate')       
+    #for the audio segments
+    #ref: https://medium.com/@MicroPyramid/understanding-audio-quality-bit-rate-sample-rate-14286953d71f
+    audio_segments_list, audio_base_url = get_media_segments(video_list['audio'], 'bitrate')       
 
     print(audio_segments_list)
     
@@ -305,33 +253,18 @@ def get_video_segments(url):
 
     print('\n\nNOW DOWNLOADING VIDEO & AUDIO FRAGMENTS.....\n\n')
         
-    """download the segments we found"""
+    
+    """download the segments found"""
     #Videos
-    download_segments(video_segments_url, video_segments_list, 'vid', pathName)
+    download_segments(video_segments_url, video_segments_list, 'vid', OUTPUT_DIR_PATH)
  
-    """convert the segments into a video"""
-
-
-    '''
-    for i, segment in enumerate(video_segments_list):
-        
-        """the 1st element of the segment's list is expected to be the 
-        initializer segment"""
-        if i == 0:
-            f = open(pathName + 'init-segment.txt', "w")
-            f.write(segment)
-            f.close
-            #download_playlist(video_segments_url + segment, 'init-segment.txt')
-        else:
-            download_playlist(video_segments_url + segment, segment)           
-    '''    
     #same with the Audio
-    download_segments(audio_segments_url, audio_segments_list, 'audio', pathName)
+    download_segments(audio_segments_url, audio_segments_list, 'audio', OUTPUT_DIR_PATH)
 
-    # - 1 because the init-segment shouldn't be counted
-    build_video('../videos/fin', len(video_segments_list) - 1)
+    # '- 1' because the init-segment shouldn't be counted
+    build_video(OUTPUT_DIR_PATH, 'fin', len(video_segments_list) - 1)
 
-def get_segments(json_list_media, media_quality):
+def get_media_segments(json_list_media, media_quality):
     """
     Find the segments corresponding to the best quality available for this media
     
@@ -398,7 +331,7 @@ def download_segments(segment_url, media_segments_list, segment_dest_name,
             download_playlist(segment_url + segment, segment_dest_name + '-segment.m4s')# + segment)           
                   
 #retrieve the video from the sources
-def getVideoSource(response):
+def get_video_sources(response):
     
     global url_segments
     
@@ -422,7 +355,7 @@ def getVideoSource(response):
             #with characters that have to be removed to get a proper mp4 file 
             fileUrl = formatVideoSource(videoUrl, '.mp4')
             
-            downloadVideo(fileUrl, '.mp4')
+            download_video(fileUrl, '.mp4')
     """
 #remove end characters from the file's url
 def formatVideoSource(url, extension):
@@ -453,11 +386,14 @@ def getBestQualityVideo(videoList):
     #print(bestQualityVideo)
     return bestQualityVideo
 
+
 #download file from url
 #progress bar implementation : https://stackoverflow.com/a/37573701
-def downloadVideo(url, extension):
-    
-    fileName = pathName + videoTitle + extension
+def download_video(url, extension):
+    """
+    Not used as it requires to download a whole mp4 file and takes too much time
+    """
+    fileName = OUTPUT_DIR_PATH + videoTitle + extension
     
     #download the file
     file = requests.get(url, stream = True)
@@ -471,7 +407,7 @@ def downloadVideo(url, extension):
     
     #create the directory where the downloaded files will be saved 
     try:
-        os.makedirs(os.path.dirname(pathName), exist_ok=False)
+        os.makedirs(os.path.dirname(OUTPUT_DIR_PATH), exist_ok=False)
     except FileExistsError:
         pass
 
@@ -487,8 +423,8 @@ def downloadVideo(url, extension):
 def download_playlist(url, file_name, extension = None):
     """download all the videos from a playlist/album/showcase"""
 
-    #fileName = pathName + videoTitle + extension
-    output_file = pathName + file_name
+    #fileName = OUTPUT_DIR_PATH + videoTitle + extension
+    output_file = OUTPUT_DIR_PATH + file_name
     #download the file
     file = requests.get(url)#, stream = True)
     #print(file.text)
@@ -516,51 +452,56 @@ def download_playlist(url, file_name, extension = None):
     #t.close()
     #urllib.request.urlretrieve(url, videoTitle + extension)
 
-def build_video(output_file, nb_segments):
+def build_video(output_directory, output_file, nb_segments= 0):
     """
     Combine the segments of the video together & create a mp4 file from them
 
+    output_directory (string): path of the output directory, where the video(s)
+    will be saved
+    
+    output_file (string): name of the file where the video will be built 
+    temporarily
+    
+    nb_segments : STRING, optional
+        number of segments to handle. The default is 0.
     """
-    '''
-    #cat the video segments
-    segD.cat_segments('../videos/', '.m4s', True, 'tmp', '.mp4', 
-                    'init-vid.txt', nb_segments, None, 'vid-segment-{}.m4s')
-    
-    #cat the audio segments
-    segD.cat_segments('../videos/', '.m4s', True, 'tmp', '.mp3', 
-                    'init-audio.txt', nb_segments, None, 'audio-segment-{}.m4s')
-    '''
     
     #cat the video segments
-    segD.cat_files('../videos/', 'init-audio.txt','audio-segment.m4s', 'tmp', '.mp3')
+    segD.cat_files(output_directory, 'init-audio.txt','audio-segment.m4s', 'tmp', '.mp3')
     
     #cat the audio segments    
-    segD.cat_files('../videos/', 'init-vid.txt','vid-segment.m4s', 'tmp', '.mp4')
+    segD.cat_files(output_directory, 'init-vid.txt','vid-segment.m4s', 'tmp', '.mp4')
      
-    segD.encode_mp4('../videos/tmp.mp4', output_file + '.mp4')
-    segD.encode_mp3('../videos/tmp.mp3', output_file  + '.mp3', '/usr/bin/ffmpeg')
+    segD.encode_mp4(output_directory + 'tmp.mp4', output_file + '.mp4')
+    segD.encode_mp3(output_directory + 'tmp.mp3', output_file  + '.mp3', '/usr/bin/ffmpeg')
         
     #combine the video and the audio in the final mp4 file
     segD.combine_files(output_file + '.mp4',
                        output_file + '.mp3',
-                       '../videos/' + videoTitle + '.mp4')
+                       output_directory + videoTitle + '.mp4')
     
     #delete useless files
-    segD.delete_files('../videos/')
+    segD.delete_files(output_directory)
+    
+    print("\n\nDownload done...\n")
     
 #check if the user provided a link to a playlist
-def checkIfPlaylist(url):
+def check_if_is_playlist(url):
     
     if re.search(vimeoDomain + r'\/showcase\/[0-9]', url) == None:
         return False
     return True
 
-#retrieve the IDs of the videos in the playlist
-def getPlaylistVideos(response, video_url_pattern):
-    '''
-    Sends a GET Request to the server, to retrieve a list of the videos of the
+def get_playlist_videos(response, video_url_pattern):
+    """
+    Retrieve the IDs of the videos in the playlist.
+    Sends a GET Request to the server, to retrieve a list of the videos from the
     playlist, or rather their IDs
-    '''
+    
+    response (string): sources of the web page to check
+    
+    video_url_pattern (string): pattern used to find the videos' ids
+    """
     playlist_video_ids = []
     
     #list of the playlist' videos' ids
@@ -578,7 +519,7 @@ def get_spider_type():
     """
     global isPlaylist
     
-    isPlaylist = checkIfPlaylist(videoUrl)
+    isPlaylist = check_if_is_playlist(videoUrl)
     
     print('\n\nThis is a {} '.format('public' if videoIsPublic else 'private') +
           '{}.\n\n'.format('playlist' if isPlaylist else 'video'))
@@ -588,7 +529,7 @@ def get_spider_type():
     else:
         return Single_video_spider()
 
-def startCrawling():
+def start_crawler():
     """
     Start crawling the website with the spider.
 
@@ -677,7 +618,7 @@ class Single_video_spider(scrapy.Spider):
 
     #download the video
     def download_video(self, response):
-        getVideoSource(response)
+        get_video_sources(response)
 
 #spider used to parse a private video
 class Playlist_video_spider(scrapy.Spider):
@@ -821,9 +762,9 @@ class Playlist_video_spider(scrapy.Spider):
                           meta={'dont_merge_cookies': True}
                           )
         
-        #getPlaylistVideos(response)
+        #get_playlist_videos(response)
         #getVideoSpecs(response)   
-        #yield scrapy.Request(videoDataSource, callback = self.downloadVideo)
+        #yield scrapy.Request(videoDataSource, callback = self.download_video)
         #pass
         
     def get_public_playlist(self, response):
@@ -832,7 +773,7 @@ class Playlist_video_spider(scrapy.Spider):
         
         print(response.text)
 
-        playlist_video_ids = getPlaylistVideos(response.text, 
+        playlist_video_ids = get_playlist_videos(response.text, 
                                                "\/videos\/(.\d+)(?!.*\/)")
         
         #loop through the videos to get their ids
@@ -857,7 +798,7 @@ class Playlist_video_spider(scrapy.Spider):
             #make a 'POST' request with the video's credentials to access it
             yield scrapy.Request(url,
                                  method='GET',#headers=headers,
-                                 callback= self.downloadVideo,#,meta={'dont_redirect':True}
+                                 callback= self.download_video,#,meta={'dont_redirect':True}
                                  dont_filter=True#,meta={'dont_merge_cookies': True}
                                  )
         
@@ -868,7 +809,7 @@ class Playlist_video_spider(scrapy.Spider):
         
         #print(response.text)
 
-        playlist_video_ids = getPlaylistVideos(response.text, 
+        playlist_video_ids = get_playlist_videos(response.text, 
                                                "\/{}\/videos\/(.\d+)".format(playlist_id))
         
         cookie = 'vuid={}; {}_albumpassword={}; _abexps=%7B%22982%22%3A%22variant%22%7D; continuous_play_v3=1'.format(sessionCookie, playlist_id, showcase_hashed_pass)
@@ -889,21 +830,17 @@ class Playlist_video_spider(scrapy.Spider):
                        'Cookie':cookie
                        }
             
-            #print(cookie)
-            #print(url)
-            #print(headers)
-            
             #make a 'POST' request with the video's credentials to access it
             yield scrapy.Request(url,
                                  method='GET', 
                                  headers=headers,
-                                 callback= self.downloadVideo,#,meta={'dont_redirect':True}
+                                 callback= self.download_video,#,meta={'dont_redirect':True}
                                  dont_filter=True,
                                  meta={'dont_merge_cookies': True}
                                  )
 
     #download the video
-    def downloadVideo(self, response):
+    def download_video(self, response):
         
         #print(response.text)
          
@@ -914,14 +851,14 @@ class Playlist_video_spider(scrapy.Spider):
             print('ERROR >>> 302 <<<, GETTING REDIRECTED...')
             print(response.url)
             yield scrapy.Request(response.urljoin(response.url), 
-                                 callback= self.downloadVideo,
+                                 callback= self.download_video,
                                  meta={'dont_merge_cookies': True})
         
     def start_download(self, response):
-        getVideoSource(response)
+        get_video_sources(response)
         
 #retrieve the url/password to use       
 getUserArgs()
 
 #launch the crawler/start the process
-startCrawling()
+start_crawler()
