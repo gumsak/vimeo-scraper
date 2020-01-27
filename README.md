@@ -1,12 +1,35 @@
 # vimeo-scraper
-Video scraper made with scrapy (made for Vimeo videos)
+### Video scraper made to retrieve Vimeo videos -V.0.9
 
-Work in progress: As of now, you can download public videos (To be tested).
+##### Implemented functions:
 
-Make sure you have Python3 (tested with 3.7.3) and the libraries used in the program, then in the terminal type:
+- creates a destination folder named ***'videos'*** for the downloaded videos (goes up one directory and create it, i.e *'../videos/'*) 
 
-   `python3 vimeoScraper.py url_of_the_video`
+- download a single video -- public or private
+
+- download a whole playlist (showcase) -- public or private
+
+##### Libraries used:
+```
+scrapy
+ffmpeg
+ffmpy
+requests
+requests_toolbelt
+tqdm
+multiple ffmpeg codecs
+```
+
+Make sure you have Python3 (tested with 3.7.3 on Ubuntu) and the libraries used in the program, then in the terminal type:
+
+   `python3 vimeo_scraper.py url_of_the_video`
    
    If the video or playlist is password protected, just put the password after the URL: 
    
-   `python3 vimeoScraper.py url_of_the_video password`
+   `python3 vimeo_scraper.py url_of_the_video password`
+      
+#### TODO:
+
+- [ ] Show download progress
+- [ ] Add pause/stop functions
+- [ ] Multiplatform / OS / python versions tests
