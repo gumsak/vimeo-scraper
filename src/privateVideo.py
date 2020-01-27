@@ -1,8 +1,9 @@
 #Video scraper for Vimeo (Get a public or private video)
 #Git repo : https://github.com/gumsak/vimeo-scraper
 """
+TODO: implement possibility to interrupt crawling
 TODO: handle specific 'errors': file with same name already exists, download is 
-interupted, etc
+interupted, connection problems, etc
 TODO: use python's naming conventions
 TODO: set more solid regex search
 TODO: check url validity, handle response status code, missing password, etc
@@ -25,7 +26,7 @@ import scrapy
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.log import configure_logging
 import logging
-
+import signal
 from requests_toolbelt import MultipartEncoder
 
 import lxml.etree
@@ -104,9 +105,13 @@ def getUserArgs():
         print("Input Error", file=sys.stderr)
         exit()
 
-#print the logging informations in a file
 def setLogOutput():
     
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    
+    #print the logging informations in a file
+    '''
     configure_logging(install_root_handler=False)
 
     logging.basicConfig(
@@ -114,7 +119,8 @@ def setLogOutput():
         format='%(levelname)s: %(message)s',
         level=logging.INFO
         )
-
+    '''
+    
 #get the page's source code
 def getPageSource(response):
     page = lxml.html.fromstring(response.body)
@@ -181,6 +187,9 @@ def getSessionData(webPage):
 def handleWrongPassword():
     pass
 
+def get_keyboard_interrupt(signal, frame):
+    sys.exit("\n\n\tProgram interrupted...\n")
+
 #get the data of the video
 def getVideoSpecs(response):
     global videoTitle
@@ -225,11 +234,12 @@ def get_video_segments(url):
     video_base_url = ''
     audio_base_url = ''
 
-    #create the directory where the downloaded files will be saved 
-    try:
-        os.makedirs(os.path.dirname(OUTPUT_DIR_PATH), exist_ok=False)
-    except FileExistsError:
-        print('\nERROR WHILE CREATING DESTINATION FOLDER\n')
+    #create the directory where the downloaded files will be saved
+    if not os.path.exists(OUTPUT_DIR_PATH):
+        try:
+            os.makedirs(os.path.dirname(OUTPUT_DIR_PATH), exist_ok=False)
+        except FileExistsError:
+            print('\nERROR WHILE CREATING DESTINATION FOLDER\n')
 
     """
     Find the segments corresponding to the best quality available for this media
@@ -237,22 +247,21 @@ def get_video_segments(url):
     #for the video segments
     video_segments_list, video_base_url = get_media_segments(video_list['video'], 'width')       
     
-    print(video_segments_list)
+    #print(video_segments_list)
         
     #for the audio segments
     #ref: https://medium.com/@MicroPyramid/understanding-audio-quality-bit-rate-sample-rate-14286953d71f
     audio_segments_list, audio_base_url = get_media_segments(video_list['audio'], 'bitrate')       
 
-    print(audio_segments_list)
+    #print(audio_segments_list)
     
     segments_url = re.findall('(https:\/\/.+?\d\/sep)', url_segments)[0]
     video_segments_url = segments_url + '/video/' + video_base_url 
     audio_segments_url = segments_url + '/video/' + audio_base_url
     
-    print(video_segments_url + '-------------------' + audio_segments_url)
+    #print(video_segments_url + '----------------' + audio_segments_url)
 
     print('\n\nNOW DOWNLOADING VIDEO & AUDIO FRAGMENTS.....\n\n')
-        
     
     """download the segments found"""
     #Videos
@@ -336,27 +345,13 @@ def get_video_sources(response):
     global url_segments
     
     print('Initializing download...')
-    #print(response.text)
     
     data = json.loads(response.body_as_unicode())
         
     url_segments = data['request']['files']['dash']['cdns']['akfire_interconnect_quic']['url']
-    #print('AKFIRE >>>>>>>>>>>>>>>>>' + url_segments)
     
     get_video_segments(url_segments)
-    """
-    for key, val in data.items():
-        if key == "request":
-            filesSource = val.get("files").get("progressive")
-            
-            videoUrl = getBestQualityVideo(filesSource)
-            
-            #some urls end with the '.mp4' extension but others will end up 
-            #with characters that have to be removed to get a proper mp4 file 
-            fileUrl = formatVideoSource(videoUrl, '.mp4')
-            
-            download_video(fileUrl, '.mp4')
-    """
+
 #remove end characters from the file's url
 def formatVideoSource(url, extension):
     
@@ -507,7 +502,7 @@ def get_playlist_videos(response, video_url_pattern):
     #list of the playlist' videos' ids
     playlist_video_ids = re.findall(video_url_pattern, response)
 
-    print(playlist_video_ids)
+    #print(playlist_video_ids)
     
     return playlist_video_ids
     
@@ -536,14 +531,16 @@ def start_crawler():
     The crawler will choose the appropriate spider to use, depending on the kind
     of video(s) it has to download (public, private, playlist...).
     """
-    
+
     current_spider = get_spider_type()
     
     process = CrawlerProcess({
         'USER_AGENT': USER_AGENT
         })
 
+    #process._signal_shutdown(9, 0)
     process.crawl(current_spider)
+    
     process.start() # the script will block here until the crawling is finished
 
 #spider used to parse one video (public or private)
@@ -628,11 +625,6 @@ class Playlist_video_spider(scrapy.Spider):
     """
     def __init__(self):
         
-        '''
-        if videoIsPublic:
-            showcase_url = videoUrl
-        else:
-        '''    
         showcase_url = videoUrl
         
         self.name = 'playlist_video_spider'
@@ -652,13 +644,10 @@ class Playlist_video_spider(scrapy.Spider):
             'HTTPERROR_ALLOWED_CODES': [401],
             'LOG_LEVEL': 'ERROR'
             }
-        
+    
     def parse(self, response):
                
         global playlist_id
-        
-        #delimiter used to separate the form data
-        boundary = "---------------------------89844361214769076511231454046"
         
         #get the id of the playlist/album/showcase
         playlist_id = re.findall("\/showcase\/(.\d+)", self.start_urls[0])[0]
@@ -671,8 +660,10 @@ class Playlist_video_spider(scrapy.Spider):
 
         #TODO: set dynamic pages/videos per page number
         
-        #body to send with the request
-        m= MultipartEncoder(fields={
+        """Body to send with the request:
+        MultipartEncoder will generate an encoded body with the given data and
+        set a random delimiter used to separate the form data"""
+        m = MultipartEncoder(fields={
             'password':videoPassword,
             'token':sessionToken,
             'referer_url':referer_url[0]})
@@ -687,13 +678,13 @@ class Playlist_video_spider(scrapy.Spider):
                    'Cookie':cookie,
                    'Content-Type':m.content_type
                    }
-            
+        '''   
         print(type(body))
         print(body.decode("utf-8"))
         print(type(headers))
         print(headers)
         print(playlist_id)
-                    
+        '''           
         #if the playlist is public, go straight to its content's data
         if videoIsPublic:
             
@@ -738,8 +729,8 @@ class Playlist_video_spider(scrapy.Spider):
         json_from_response = json.loads(response.body_as_unicode())
         showcase_hashed_pass = json_from_response["hashed_pass"]
         
-        print(showcase_hashed_pass)
-        print(response.request.url)
+        #print(showcase_hashed_pass)
+        #print(response.request.url)
         
         page = 1
         per_page = 12
@@ -771,7 +762,7 @@ class Playlist_video_spider(scrapy.Spider):
         """Retrieve the videos' ids from the playlist, then start the 
         downloading process for each video"""
         
-        print(response.text)
+        #print(response.text)
 
         playlist_video_ids = get_playlist_videos(response.text, 
                                                "\/videos\/(.\d+)(?!.*\/)")
@@ -859,6 +850,8 @@ class Playlist_video_spider(scrapy.Spider):
         
 #retrieve the url/password to use       
 getUserArgs()
+
+setLogOutput()
 
 #launch the crawler/start the process
 start_crawler()
