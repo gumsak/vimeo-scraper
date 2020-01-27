@@ -1,5 +1,5 @@
 # vimeo-scraper
-### Video scraper made to retrieve Vimeo videos -V.0.9
+### Web scraper made to retrieve videos from Vimeo -V.0.9
 
 ##### Implemented functions:
 
