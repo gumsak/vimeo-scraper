@@ -47,7 +47,7 @@ configPath = '..'
 sys.path.append(os.path.abspath(configPath))
 
 VIMEO_HOME = 'https://vimeo.com'
-vimeoDomain = 'vimeo.com'
+VIMEO_DOMAIN = 'vimeo.com'
 
 videoUrl = ''
 videoPassword = ''
@@ -92,19 +92,27 @@ def getUserArgs():
         videoUrl = sys.argv[1]
         videoPassword = sys.argv[2]
         videoIsPublic = False
-        print(sys.argv[1])
+        #print(sys.argv[1])
         
     #user gave url only
     elif len(sys.argv) == 2:
         videoUrl = sys.argv[1]
-        print(videoUrl)
+        #print(videoUrl)
         
     #user gave wrong/no arguments
         #TODO: display help/correct parameters
     else:
         print("Input Error", file=sys.stderr)
         exit()
+        
+    print(videoUrl)
 
+    #if the url ends with a '/', it will be removed
+    if re.search(r'\/+$', videoUrl) == None:
+        pass
+    else:
+        videoUrl = videoUrl[:-1]
+    
 def setLogOutput():
     
     logging.getLogger("requests").setLevel(logging.WARNING)
@@ -486,7 +494,9 @@ def build_video(output_directory, output_file, nb_segments= 0):
 #check if the user provided a link to a playlist
 def check_if_is_playlist(url):
     
-    if re.search(vimeoDomain + r'\/showcase\/[0-9]', url) == None:
+    """if the given url ends with a pattern like 'vimeo.com/showcase/123456' or 
+    'vimeo.com/showcase/123456/', it is then considered a playlist"""
+    if re.search(VIMEO_DOMAIN + r'\/showcase\/\d+\/?$', url) == None:
         return False
     return True
 
@@ -523,9 +533,9 @@ def get_spider_type():
           '{}.\n\n'.format('playlist' if isPlaylist else 'video'))
 
     if isPlaylist:
-        return Playlist_video_spider()
+        return Playlist_video_spider
     else:
-        return Single_video_spider()
+        return Single_video_spider
 
 def start_crawler():
     """
@@ -560,7 +570,7 @@ class Single_video_spider(scrapy.Spider):
             single_vid_url = videoUrl + '/password'
        
         self.name = 'single_video_spider'
-        self.allowed_domains = [vimeoDomain]
+        self.allowed_domains = [VIMEO_DOMAIN]
         self.start_urls=[single_vid_url]
         
         print("*** Single video: URL = " + videoUrl + " ***")
@@ -631,7 +641,7 @@ class Playlist_video_spider(scrapy.Spider):
         showcase_url = videoUrl
         
         self.name = 'playlist_video_spider'
-        self.allowed_domains = [vimeoDomain]
+        self.allowed_domains = [VIMEO_DOMAIN]
         self.start_urls=[showcase_url]
     
         print("*** Playlist URL: " + videoUrl + " ***")
