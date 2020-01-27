@@ -58,7 +58,7 @@ def getUserArgs():
         print("Input Error", file=sys.stderr)
         exit()
 
-#get the data of the video
+#get informations from the video
 def getVideoSpecs(response):
     global videoTitle
     global videoDataSource
