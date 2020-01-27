@@ -28,6 +28,7 @@
 
 *.html
 *.mp4
+*.mp3
 config.py
 #src/
 videos/

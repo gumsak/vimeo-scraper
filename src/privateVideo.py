@@ -235,7 +235,9 @@ def get_video_segments(url):
     audio_base_url = ''
 
     #create the directory where the downloaded files will be saved
-    if not os.path.exists(OUTPUT_DIR_PATH):
+    if os.path.exists(OUTPUT_DIR_PATH):
+        pass
+    else:
         try:
             os.makedirs(os.path.dirname(OUTPUT_DIR_PATH), exist_ok=False)
         except FileExistsError:
@@ -460,6 +462,7 @@ def build_video(output_directory, output_file, nb_segments= 0):
     nb_segments : STRING, optional
         number of segments to handle. The default is 0.
     """
+    output_file = output_directory + output_file
     
     #cat the video segments
     segD.cat_files(output_directory, 'init-audio.txt','audio-segment.m4s', 'tmp', '.mp3')
