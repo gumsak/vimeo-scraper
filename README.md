@@ -20,6 +20,8 @@ tqdm
 multiple ffmpeg codecs
 ```
 
+#### How to use:
+
 Make sure you have Python3 (tested with 3.7.3 on Ubuntu) and the libraries used in the program, then in the terminal type:
 
    `python3 vimeo_scraper.py url_of_the_video`
