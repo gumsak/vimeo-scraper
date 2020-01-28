@@ -84,9 +84,7 @@ def getUserArgs():
     global videoPassword
     global videoIsPublic
     global isPlaylist
-    
-    #isPlaylist = check_if_is_playlist(videoUrl)
-    
+        
     #user gave url & password
     if len(sys.argv) == 3:
         videoUrl = sys.argv[1]
@@ -107,13 +105,16 @@ def getUserArgs():
         
     print(videoUrl)
 
-    #if the url ends with a '/', it will be removed
+    #if the url ends with a '/', the character will be removed
     if re.search(r'\/+$', videoUrl) == None:
         pass
     else:
         videoUrl = videoUrl[:-1]
     
 def setLogOutput():
+    """
+    Set the level of the logging informations to display 
+    """
     
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -195,7 +196,7 @@ def getSessionData(webPage):
 def handleWrongPassword():
     pass
 
-def get_keyboard_interrupt(signal, frame):
+def get_keyboard_interrupt():
     sys.exit("\n\n\tProgram interrupted...\n")
 
 #get the data of the video
@@ -271,13 +272,15 @@ def get_video_segments(url):
     
     #print(video_segments_url + '----------------' + audio_segments_url)
 
-    print('\n\nNOW DOWNLOADING VIDEO & AUDIO FRAGMENTS.....\n\n')
+    print('\n\nNOW DOWNLOADING VIDEO & AUDIO FRAGMENTS.....\n')
     
     """download the segments found"""
     #Videos
+    print('Downloading video segments:\n')
     download_segments(video_segments_url, video_segments_list, 'vid', OUTPUT_DIR_PATH)
  
     #same with the Audio
+    print('Downloading audio segments:\n')
     download_segments(audio_segments_url, audio_segments_list, 'audio', OUTPUT_DIR_PATH)
 
     # '- 1' because the init-segment shouldn't be counted
@@ -338,6 +341,11 @@ def download_segments(segment_url, media_segments_list, segment_dest_name,
     segments_dest_dir : direcory where the segments will be saved
     """
     
+    nb_segments = len(media_segments_list)
+    
+    #initialize the progress bar
+    t = tqdm(total = nb_segments)
+    
     for i, segment in enumerate(media_segments_list):
         
         """the 1st element of the segment's list is expected to be the 
@@ -347,8 +355,13 @@ def download_segments(segment_url, media_segments_list, segment_dest_name,
             f.write(segment)
             f.close
         else:
-            download_playlist(segment_url + segment, segment_dest_name + '-segment.m4s')# + segment)           
-                  
+            download_playlist(segment_url + segment, segment_dest_name + '-segment.m4s')# + segment)
+            
+        t.update(i+1)
+        #print('{} out of {} segments downloaded...'.format(i+1, nb_segments))
+         
+    t.close()
+
 #retrieve the video from the sources
 def get_video_sources(response):
     
@@ -477,28 +490,47 @@ def build_video(output_directory, output_file, nb_segments= 0):
     
     #cat the audio segments    
     segD.cat_files(output_directory, 'init-vid.txt','vid-segment.m4s', 'tmp', '.mp4')
-     
+    
+    segD.delete_file_pattern(['*.m4s*', '*.txt'], output_directory)
+
     segD.encode_mp4(output_directory + 'tmp.mp4', output_file + '.mp4')
     segD.encode_mp3(output_directory + 'tmp.mp3', output_file  + '.mp3', '/usr/bin/ffmpeg')
-        
+    
+    segD.delete_file_pattern(['tmp.mp*'], output_directory)
+    
     #combine the video and the audio in the final mp4 file
     segD.combine_files(output_file + '.mp4',
                        output_file + '.mp3',
                        output_directory + videoTitle + '.mp4')
     
     #delete useless files
-    segD.delete_files(output_directory)
-    
+    #segD.delete_files(output_directory)
+    segD.delete_file_pattern(['fin.mp*'], output_directory)
+
     print("\n\nDownload done...\n")
     
 #check if the user provided a link to a playlist
 def check_if_is_playlist(url):
+    """
+    Check if the given link is a playlist or a single video. It is also used 
+    to treat the url of a video from a showcase (ex: showcase/123467/video/789012)
+    like a whole showcase would be.
+
+    url (string): Url to check
+        
+    Returns : a boolean -- False == simple video
+                           True == playlist
+    """
     
     """if the given url ends with a pattern like 'vimeo.com/showcase/123456' or 
     'vimeo.com/showcase/123456/', it is then considered a playlist"""
-    if re.search(VIMEO_DOMAIN + r'\/showcase\/\d+\/?$', url) == None:
-        return False
-    return True
+    if re.search(VIMEO_DOMAIN + '\/showcase\/\d+\/?$', url):
+        return True
+    #if it's a video linked from a showcase
+    #elif re.search(VIMEO_DOMAIN + '\/showcase\/\d+\/video\/\d+\/?$', url):
+    #    return True, 1
+
+    return False
 
 def get_playlist_videos(response, video_url_pattern):
     """
@@ -515,7 +547,7 @@ def get_playlist_videos(response, video_url_pattern):
     #list of the playlist' videos' ids
     playlist_video_ids = re.findall(video_url_pattern, response)
 
-    #print(playlist_video_ids)
+    print(playlist_video_ids)
     
     return playlist_video_ids
     
@@ -528,14 +560,14 @@ def get_spider_type():
     global isPlaylist
     
     isPlaylist = check_if_is_playlist(videoUrl)
-    
+        
     print('\n\nThis is a {} '.format('public' if videoIsPublic else 'private') +
           '{}.\n\n'.format('playlist' if isPlaylist else 'video'))
 
     if isPlaylist:
-        return Playlist_video_spider
+        return PlaylistVideoSpider
     else:
-        return Single_video_spider
+        return SingleVideoSpider
 
 def start_crawler():
     """
@@ -554,10 +586,21 @@ def start_crawler():
     #process._signal_shutdown(9, 0)
     process.crawl(current_spider)
     
-    process.start() # the script will block here until the crawling is finished
+    try:
+        process.start() # the script will block here until the crawling is finished
+    except KeyboardInterrupt:
+        get_keyboard_interrupt()
+        
+class CustomSignalExtension(object):
+    
+    #def __init__(self, )
+    
+    name="CustomSignalExtension"
+    
+    #@classmethod
+    #def from_crawler(cls, )
 
-#spider used to parse one video (public or private)
-class Single_video_spider(scrapy.Spider):
+class SingleVideoSpider(scrapy.Spider):
     """
     Spider used to download a single private/public video 
     """
@@ -569,7 +612,7 @@ class Single_video_spider(scrapy.Spider):
         else:
             single_vid_url = videoUrl + '/password'
        
-        self.name = 'single_video_spider'
+        self.name = 'SingleVideoSpider'
         self.allowed_domains = [VIMEO_DOMAIN]
         self.start_urls=[single_vid_url]
         
@@ -630,8 +673,7 @@ class Single_video_spider(scrapy.Spider):
     def download_video(self, response):
         get_video_sources(response)
 
-#spider used to parse a private video
-class Playlist_video_spider(scrapy.Spider):
+class PlaylistVideoSpider(scrapy.Spider):
     """
     Spider used to download all the videos from a private/public 
     showcase (playlist) 
@@ -640,7 +682,7 @@ class Playlist_video_spider(scrapy.Spider):
         
         showcase_url = videoUrl
         
-        self.name = 'playlist_video_spider'
+        self.name = 'PlaylistVideoSpider'
         self.allowed_domains = [VIMEO_DOMAIN]
         self.start_urls=[showcase_url]
     
@@ -655,7 +697,11 @@ class Playlist_video_spider(scrapy.Spider):
         #log level = ERROR, DEBUG, INFO, WARNING...
         self.custom_settings = {
             'HTTPERROR_ALLOWED_CODES': [401],
-            'LOG_LEVEL': 'ERROR'
+            'LOG_LEVEL': 'ERROR',
+            'CONCURRENT_REQUESTS': 1,
+            'DEPTH_PRIORITY': 1,
+            'SCHEDULER_DISK_QUEUE': 'scrapy.squeues.PickleFifoDiskQueue',
+            'SCHEDULER_MEMORY_QUEUE': 'scrapy.squeues.FifoMemoryQueue'
             }
     
     def parse(self, response):
@@ -719,7 +765,7 @@ class Playlist_video_spider(scrapy.Spider):
                               headers=headers,
                               callback= self.get_public_playlist)
             
-            return playlist_request
+            yield playlist_request
         
         #get a private playlist
         else:
@@ -732,7 +778,7 @@ class Playlist_video_spider(scrapy.Spider):
                               meta={'dont_merge_cookies': True},
                               callback= self.access_private_showcase)
             
-            return auth_request
+            yield auth_request
         
     def access_private_showcase(self, response):
         """Make a request to access the page listing the videos from the playlist"""
@@ -782,9 +828,7 @@ class Playlist_video_spider(scrapy.Spider):
         
         #loop through the videos to get their ids
         for video_id in playlist_video_ids:
-        
-        #video_id = playlist_video_ids[0]
-        
+                            
             url = self.start_urls[0] + '/video/' + video_id
         
             #header of a request used to access a protected video
@@ -794,10 +838,6 @@ class Playlist_video_spider(scrapy.Spider):
                        'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                        'Upgrade-Insecure-Requests':'1'#,'Cookie':cookie
                        }
-            
-            #print(cookie)
-            #print(url)
-            #print(headers)
             
             #make a 'POST' request with the video's credentials to access it
             yield scrapy.Request(url,
@@ -820,11 +860,9 @@ class Playlist_video_spider(scrapy.Spider):
         
         #loop through the videos to get their ids
         for video_id in playlist_video_ids:
-        
-        #video_id = playlist_video_ids[0]
-        
+                            
             url = self.start_urls[0] + '/video/' + video_id
-        
+                    
             #header of a request used to access a protected video
             headers = {'Origin':VIMEO_HOME,
                        'Referer':self.start_urls[0],
