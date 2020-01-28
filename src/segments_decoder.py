@@ -164,6 +164,23 @@ def delete_files(directory=''):
             except:
                 print("Error while removing file")
                                     
+def delete_file_pattern(file_list, directory=''):
+    """Delete specific files from the given directory
+    
+    file_list (string list): pattern of the files to delete
+    
+    directory (string): (optional) path of the directory to check
+    """
+         
+    for file in os.listdir(directory):
+        for pattern in file_list:
+            
+            if fnmatch.fnmatch(file, pattern):
+                try:
+                    os.remove(directory + file)
+                except:
+                    print("Error while removing file")
+                                    
 def combine_files(video_file, audio_file, output_file):
     """Join an audio file & a video file to create a new video file with sound"""
 
